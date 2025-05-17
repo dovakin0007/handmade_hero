@@ -1,0 +1,6 @@
+# Ignore the entire build directory
+build/
+
+# Ignore everything inside output but keep the folder itself
+output/*
+!output/.gitkeep
