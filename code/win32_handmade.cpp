@@ -15,7 +15,7 @@ typedef uint16_t uint16;
 typedef uint32_t uint32;
 typedef uint64_t uint64;
 
-global_variable bool RUNNING;
+global_variable bool GLOBALRUNNING;
 global_variable BITMAPINFO bitmap_info;
 global_variable void *bitmap_memory;
 global_variable int bitmap_width;
@@ -81,6 +81,9 @@ internal void Win32ResizeDIBSection(Win32OffscreenBuffer *buffer, int width,
   if (buffer->Memory) {
     VirtualFree(buffer->Memory, 0, MEM_RELEASE);
   }
+  // height is negative which allows to treat the bit map as top-down rather
+  // than bottom-up meaning that first three bytes of the pixel are from top
+  // left of the bit map rather than bottom left
   buffer->BytesPerPixel = 4;
   buffer->Width = width;
   buffer->Height = height;
@@ -102,6 +105,7 @@ internal void Win32DisplayBufferInWindow(HDC device_context,
                                          Win32OffscreenBuffer buffer, int x,
                                          int y, int width, int height) {
   // Pitch refers to the number of bytes from one row to another
+  // Copies from previous screen buffer to new screen buffer
   StretchDIBits(device_context, 0, 0, window_dimension.Width,
                 window_dimension.Height, 0, 0, buffer.Width, buffer.Height,
                 buffer.Memory, &buffer.Info, DIB_RGB_COLORS, SRCCOPY);
@@ -115,11 +119,11 @@ LRESULT Win32MainWindowCallback(HWND hInstance, UINT uMsg, WPARAM wParam,
     break;
   };
   case WM_DESTROY: {
-    RUNNING = false;
+    GLOBALRUNNING = false;
     break;
   };
   case WM_CLOSE: {
-    RUNNING = false;
+    GLOBALRUNNING = false;
     break;
   };
   case WM_ACTIVATEAPP: {
@@ -165,14 +169,14 @@ int WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine,
         WS_OVERLAPPEDWINDOW | WS_VISIBLE, CW_USEDEFAULT, CW_USEDEFAULT,
         CW_USEDEFAULT, CW_USEDEFAULT, 0, 0, hInstance, 0);
     if (window_handle) {
-      RUNNING = true;
+      GLOBALRUNNING = true;
       int x_offset = 0;
       int y_offset = 0;
-      while (RUNNING) {
+      while (GLOBALRUNNING) {
         MSG message = {};
         while (PeekMessage(&message, 0, 0, 0, PM_REMOVE)) {
           if (message.message == WM_QUIT) {
-            RUNNING = false;
+            GLOBALRUNNING = false;
           }
           TranslateMessage(&message);
           DispatchMessage(&message);
