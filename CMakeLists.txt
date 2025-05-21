@@ -18,4 +18,5 @@ target_link_libraries(handmade
     gdi32
     kernel32
     shell32
+    Ole32
 )
