@@ -1,12 +1,12 @@
+#include <DSound.h>
+#include <Xinput.h>
+#include <combaseapi.h>
 #include <cstdint>
 #include <windows.h>
 #include <winerror.h>
-#include <Xinput.h>
-#include <combaseapi.h>
 #include <winnt.h>
 #include <winrt/Windows.Foundation.Collections.h>
 #include <xaudio2.h>
-#include <dsound.h>
 
 #define internal static
 #define local_persist static
@@ -18,14 +18,10 @@ typedef int32_t int32;
 typedef int64_t int64;
 typedef int32 bool32;
 
-
-
 typedef uint8_t uint8;
 typedef uint16_t uint16;
 typedef uint32_t uint32;
 typedef uint64_t uint64;
-
-global_variable bool GLOBALRUNNING;
 
 struct Win32OffscreenBuffer {
   BITMAPINFO Info;
@@ -36,12 +32,14 @@ struct Win32OffscreenBuffer {
   int BytesPerPixel;
 };
 
-global_variable Win32OffscreenBuffer global_back_buffer;
-
 struct Win32WindowDimension {
   int Width;
   int Height;
 };
+
+global_variable bool GLOBALRUNNING;
+global_variable Win32OffscreenBuffer global_back_buffer;
+global_variable LPDIRECTSOUNDBUFFER global_secondary_buffer;
 
 // Xinput Get state
 #define X_INPUT_GET_STATE(name)                                                \
@@ -65,61 +63,64 @@ global_variable x_input_set_state *XInputSetState_ = XInputSetStateStub;
                XAUDIO2_PROCESSOR XAudio2Processor)
 typedef XAUDIO2_CREATE(xaudio2_create);
 
-
-
-#define DIRECT_SOUND_CREATE(name) HRESULT WINAPI name(LPCGUID pcGuidDevice, LPDIRECTSOUND *ppDS, LPUNKNOWN pUnkOuter);
+#define DIRECT_SOUND_CREATE(name)                                              \
+  HRESULT WINAPI name(LPCGUID pcGuidDevice, LPDIRECTSOUND *ppDS,               \
+                      LPUNKNOWN pUnkOuter);
 typedef DIRECT_SOUND_CREATE(direct_sound_create);
 
-internal void
-win32_init_direct_audio(HWND Window, int32 SamplesPerSec, int32 BufferSize) {
-  HMODULE Library = LoadLibraryA("dsound.dll");
-  if(Library) {
-    direct_sound_create *DirectSoundCreate = (direct_sound_create *)GetProcAddress(Library, "DirectSoundCreate");
+internal void win32_init_direct_audio(HWND Window, int32 SamplesPerSec,
+                                      int32 BufferSize) {
+  HMODULE library = LoadLibraryA("dsound.dll");
+  if (library) {
+    direct_sound_create *DirectSoundCreate =
+        (direct_sound_create *)GetProcAddress(library, "DirectSoundCreate");
 
-    LPDIRECTSOUND DirectSound;
+    LPDIRECTSOUND direct_sound;
 
-    if(SUCCEEDED(DirectSoundCreate(0, &DirectSound, 0))) {
-      if(SUCCEEDED(DirectSound->SetCooperativeLevel(Window, DSSCL_PRIORITY))) {
+    if (SUCCEEDED(DirectSoundCreate(0, &direct_sound, 0))) {
+      if (SUCCEEDED(
+              direct_sound->SetCooperativeLevel(Window, DSSCL_PRIORITY))) {
         OutputDebugStringA("Set cooperative level ok\n");
       } else {
         // TODO: logging
       }
 
-      WAVEFORMATEX WaveFormat  = {};
-      WaveFormat.wFormatTag = WAVE_FORMAT_PCM;
-      WaveFormat.nChannels = 2;
-      WaveFormat.nSamplesPerSec = SamplesPerSec;
-      WaveFormat.wBitsPerSample = 16;
-      WaveFormat.nBlockAlign = WaveFormat.nChannels * WaveFormat.wBitsPerSample / 8;
-      WaveFormat.nAvgBytesPerSec = WaveFormat.nSamplesPerSec * WaveFormat.nBlockAlign;
+      WAVEFORMATEX wave_format = {};
+      wave_format.wFormatTag = WAVE_FORMAT_PCM;
+      wave_format.nChannels = 2;
+      wave_format.nSamplesPerSec = SamplesPerSec;
+      wave_format.wBitsPerSample = 16;
+      wave_format.nBlockAlign =
+          wave_format.nChannels * wave_format.wBitsPerSample / 8;
+      wave_format.nAvgBytesPerSec =
+          wave_format.nSamplesPerSec * wave_format.nBlockAlign;
 
       {
-        DSBUFFERDESC BufferDesc = {};
-        BufferDesc.dwSize = sizeof(BufferDesc);
-        BufferDesc.dwFlags = DSBCAPS_PRIMARYBUFFER;
-        LPDIRECTSOUNDBUFFER  PrimaryBuffer;
-        if(SUCCEEDED(DirectSound->CreateSoundBuffer(&BufferDesc, &PrimaryBuffer, 0))) {
-            OutputDebugStringA("Create primary buffer ok\n");
-            if(SUCCEEDED(PrimaryBuffer->SetFormat(&WaveFormat))) {
-              OutputDebugStringA("Primary buffer set format ok\n");
-            } else {
-              // TDOO: logging
-            }
+        DSBUFFERDESC buffer_desc = {};
+        buffer_desc.dwSize = sizeof(buffer_desc);
+        buffer_desc.dwFlags = DSBCAPS_PRIMARYBUFFER;
+        LPDIRECTSOUNDBUFFER primary_buffer;
+        if (SUCCEEDED(direct_sound->CreateSoundBuffer(&buffer_desc,
+                                                      &primary_buffer, 0))) {
+          OutputDebugStringA("Create primary buffer ok\n");
+          if (SUCCEEDED(primary_buffer->SetFormat(&wave_format))) {
+            OutputDebugStringA("Primary buffer set format ok\n");
+          } else {
+            // TDOO: logging
+          }
         }
       }
 
-      {
-        DSBUFFERDESC BufferDesc = {};
-        BufferDesc.dwSize = sizeof(BufferDesc);
-        BufferDesc.dwFlags = 0;
-        BufferDesc.dwBufferBytes = BufferSize;
-        BufferDesc.lpwfxFormat = &WaveFormat;
-        LPDIRECTSOUNDBUFFER  SecondaryBuffer;
-        if(SUCCEEDED(DirectSound->CreateSoundBuffer(&BufferDesc, &SecondaryBuffer, 0))) {
-          OutputDebugStringA("Secondary buffer created\n");
-        } else {
-          // TODO: logging
-        }
+      DSBUFFERDESC buffer_desc = {};
+      buffer_desc.dwSize = sizeof(buffer_desc);
+      buffer_desc.dwFlags = 0;
+      buffer_desc.dwBufferBytes = BufferSize;
+      buffer_desc.lpwfxFormat = &wave_format;
+      if (SUCCEEDED(direct_sound->CreateSoundBuffer(
+              &buffer_desc, &global_secondary_buffer, 0))) {
+        OutputDebugStringA("Secondary buffer created\n");
+      } else {
+        // TODO: logging
       }
 
     } else {
@@ -146,9 +147,9 @@ internal void win32_load_xinput(void) {
   }
 }
 
-
 // TODO: DIAGNOSTIC LOGGING
-// internal void win32_init_direct_audio(int32 samples_per_second, int32 buffer_size) {
+// internal void win32_init_direct_audio(int32 samples_per_second, int32
+// buffer_size) {
 //   // Load the lib
 //   // keep  this as static to work lol
 //       internal winrt::com_ptr<IXAudio2> m_xAudio2;
@@ -169,10 +170,11 @@ internal void win32_load_xinput(void) {
 // DWORD SAMPLESPERCYCLE =
 //       (DWORD)(samples_per_second / CYCLESPERSEC); // 200 samples per cycle.
 //   DWORD AUDIOBUFFERSIZEINSAMPLES =
-//       samples_per_second * AUDIOBUFFERSIZEINCYCLES; // 2,000 samples per buffer.
+//       samples_per_second * AUDIOBUFFERSIZEINCYCLES; // 2,000 samples per
+//       buffer.
 //   UINT32 AUDIOBUFFERSIZEINBYTES =
-//       AUDIOBUFFERSIZEINSAMPLES * BITSPERSSAMPLE / 8; // 4,000 bytes per buffer.
-
+//       AUDIOBUFFERSIZEINSAMPLES * BITSPERSSAMPLE / 8; // 4,000 bytes per
+//       buffer.
 
 //   HRESULT hr = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
 //   if (FAILED(hr)) {
@@ -182,7 +184,8 @@ internal void win32_load_xinput(void) {
 //   xaudio2_create *XAudio2Create =
 //       (xaudio2_create *)GetProcAddress(x_audio_lib, "XAudio2Create");
 
-//       if (!XAudio2Create || FAILED(XAudio2Create(m_xAudio2.put(), 0, XAUDIO2_DEFAULT_PROCESSOR))) {
+//       if (!XAudio2Create || FAILED(XAudio2Create(m_xAudio2.put(), 0,
+//       XAUDIO2_DEFAULT_PROCESSOR))) {
 //         OutputDebugStringA("Failed to create XAudio2 instance\n");
 //         return;
 //       }
@@ -196,8 +199,8 @@ internal void win32_load_xinput(void) {
 //     waveFormatEx.nChannels = 2;
 //     waveFormatEx.nSamplesPerSec = samples_per_second;
 //     waveFormatEx.wBitsPerSample = 16;
-//     waveFormatEx.nBlockAlign = (waveFormatEx.nChannels * waveFormatEx.wBitsPerSample) / 8;
-//     waveFormatEx.nAvgBytesPerSec =
+//     waveFormatEx.nBlockAlign = (waveFormatEx.nChannels *
+//     waveFormatEx.wBitsPerSample) / 8; waveFormatEx.nAvgBytesPerSec =
 //         waveFormatEx.nSamplesPerSec * waveFormatEx.nBlockAlign;
 //     waveFormatEx.cbSize = 0;
 //     HRESULT result =
@@ -236,7 +239,6 @@ internal void win32_load_xinput(void) {
 //      }
 
 //      OutputDebugStringA("Audio playback started\n");
-
 
 //   // Get a xaudio2 object
 
@@ -303,8 +305,8 @@ internal void Win32ResizeDIBSection(Win32OffscreenBuffer *buffer, int width,
   buffer->Info.bmiHeader.biCompression = BI_RGB;
   int bitmap_memory_size =
       (buffer->Width * buffer->Height) * buffer->BytesPerPixel;
-  buffer->Memory =
-      VirtualAlloc(0, bitmap_memory_size, MEM_COMMIT|MEM_RESERVE, PAGE_READWRITE);
+  buffer->Memory = VirtualAlloc(0, bitmap_memory_size, MEM_COMMIT | MEM_RESERVE,
+                                PAGE_READWRITE);
   buffer->Pitch = width * buffer->BytesPerPixel;
 }
 // hInstance is window instance
@@ -415,10 +417,24 @@ int WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine,
         WS_OVERLAPPEDWINDOW | WS_VISIBLE, CW_USEDEFAULT, CW_USEDEFAULT,
         CW_USEDEFAULT, CW_USEDEFAULT, 0, 0, hInstance, 0);
     if (window_handle) {
-      win32_init_direct_audio(window_handle, 48000, 48000 * sizeof(int16) * 2);
       GLOBALRUNNING = true;
+
+      // Graphics test
       int x_offset = 0;
       int y_offset = 0;
+
+      // Sound Test
+      int samples_per_second = 48000;
+      int tone_hz = 256;
+      int tone_volume = 3000;
+      uint32 running_sample_index = 0;
+      int square_wave_period = samples_per_second / tone_hz;
+      int half_square_wave_period = square_wave_period / 2;
+      int bytes_per_sample = sizeof(int16) * 2;
+      int secondary_buffer_size = bytes_per_sample * samples_per_second;
+      win32_init_direct_audio(window_handle, samples_per_second,
+                              secondary_buffer_size);
+      global_secondary_buffer->Play(0, 0, DSBPLAY_LOOPING);
       while (GLOBALRUNNING) {
         MSG message = {};
         while (PeekMessage(&message, 0, 0, 0, PM_REMOVE)) {
@@ -457,6 +473,54 @@ int WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine,
         vibration.wRightMotorSpeed = 60000;
         XInputSetState(0, &vibration);
         RenderWeirdGradient(&global_back_buffer, x_offset, y_offset);
+        DWORD play_cursor;
+        DWORD write_cusror;
+        if (SUCCEEDED(global_secondary_buffer->GetCurrentPosition(
+                &play_cursor, &write_cusror))) {
+          DWORD byte_to_lock =
+              running_sample_index * bytes_per_sample % secondary_buffer_size;
+          DWORD bytes_to_write;
+          if (byte_to_lock > play_cursor) {
+            bytes_to_write = secondary_buffer_size - byte_to_lock;
+            bytes_to_write += play_cursor;
+          } else {
+            bytes_to_write = play_cursor - byte_to_lock;
+          }
+          VOID *region1;
+          DWORD region1_size;
+          VOID *region2;
+          DWORD region2_size;
+
+          if (SUCCEEDED(global_secondary_buffer->Lock(
+                  byte_to_lock, bytes_to_write, &region1, &region1_size,
+                  &region2, &region2_size, 0))) {
+            int16 *sample_out1 = (int16 *)region1;
+            DWORD region1_sample_count = region1_size / bytes_per_sample;
+            DWORD region2_sample_count = region2_size / bytes_per_sample;
+            for (DWORD sample_idx = 0; sample_idx < region1_sample_count;
+                 ++sample_idx) {
+              // returns releative index of the give sin wave example 0 or 1
+              int16 sample_value =
+                  ((running_sample_index++ / half_square_wave_period) % 2)
+                      ? tone_volume
+                      : -tone_volume;
+              *sample_out1++ = sample_value;
+              *sample_out1++ = sample_value;
+            }
+            int16 *sample_out2 = (int16 *)region2;
+            for (DWORD sample_idx = 0; sample_idx < region2_sample_count;
+                 ++sample_idx) {
+              int16 sample_value =
+                  ((running_sample_index++ / half_square_wave_period) % 2)
+                      ? tone_volume
+                      : -tone_volume;
+              *sample_out2++ = sample_value;
+              *sample_out2++ = sample_value;
+            }
+            global_secondary_buffer->Unlock(&region1, region1_size, &region2,
+                                            region2_size);
+          }
+        }
         HDC device_context = GetDC(window_handle);
         Win32WindowDimension dimension =
             win32_get_window_dimension(window_handle);
@@ -470,6 +534,7 @@ int WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine,
     } else {
       // TODO: logging
     }
+
   } else {
     OutputDebugString("Failed to register WNDCLASS\n");
   }
