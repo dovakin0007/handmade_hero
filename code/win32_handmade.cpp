@@ -1,13 +1,14 @@
 #include <DSound.h>
+#include <Windows.h>
 #include <Xinput.h>
 #include <cmath>
 #include <combaseapi.h>
 #include <cstdint>
-#include <minwindef.h>
-#include <windows.h>
-#include <winerror.h>
+#include <intrin.h>
+#include <profileapi.h>
 #include <winnt.h>
 #include <winrt/Windows.Foundation.Collections.h>
+#include <winuser.h>
 #include <xaudio2.h>
 
 #define internal static
@@ -474,6 +475,10 @@ int WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine,
   // window_class.hIcon;
   window_class.lpszClassName = "HandmadeHeroWindowClass";
 
+  LARGE_INTEGER pref_count_frequency_result;
+  QueryPerformanceFrequency(&pref_count_frequency_result);
+  int64 pref_count_frequency = pref_count_frequency_result.QuadPart;
+
   if (RegisterClassEx(&window_class)) {
     HWND window_handle = CreateWindowEx(
         0, window_class.lpszClassName, "Handmade hero",
@@ -502,6 +507,10 @@ int WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine,
       win32_fill_sound_buffer(&sound_output, 0,
                               sound_output.secondary_buffer_size);
       global_secondary_buffer->Play(0, 0, DSBPLAY_LOOPING);
+
+      LARGE_INTEGER last_counter;
+      QueryPerformanceCounter(&last_counter);
+      uint64 last_cycle_count = __rdtsc();
       while (GLOBALRUNNING) {
         MSG message = {};
         while (PeekMessage(&message, 0, 0, 0, PM_REMOVE)) {
@@ -570,7 +579,22 @@ int WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine,
                                    &global_back_buffer, 0, 0, dimension.Width,
                                    dimension.Height);
         ReleaseDC(window_handle, device_context);
-        ++x_offset;
+        uint64 end_cycle_count = __rdtsc();
+        LARGE_INTEGER end_counter;
+        QueryPerformanceCounter(&end_counter);
+
+        uint64 cycle_elapsed = end_cycle_count - last_cycle_count;
+        int64 counter_elapsed = end_counter.QuadPart - last_counter.QuadPart;
+        real32 ms_per_frame = (real32)(((real32)counter_elapsed * 1000.0f) /
+                                       pref_count_frequency);
+        real32 fps = (real32)pref_count_frequency / (real32)counter_elapsed;
+        real32 mcpf = (real32)((real32)cycle_elapsed / (1000.0f * 1000.0f));
+        // use this part for debug
+        char buffer[256];
+        sprintf(buffer, "%fms/f / %fFPS/s %fmc/f \n", ms_per_frame, fps, mcpf);
+        OutputDebugStringA(buffer);
+        //
+        last_counter = end_counter;
       }
     } else {
       // TODO: logging
