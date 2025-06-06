@@ -1,11 +1,28 @@
+
+/*
+- Saved game locations
+- Getting a handle to our own executable file
+- Asset loading path
+- Threading (launch a thread)
+- Raw Input (support for multiple keyboards)
+- Sleep/timeBeginPeriod
+- ClipCursor() (for multimonitor support)
+- Fullscreen support
+- WM_SETCURSOR (control cursor visibility)
+- QueryCancelAutoplay
+- WM_ACTIVATEAPP (for when we are not the active application)
+- Blit speed improvements (BitBlt)
+- Hardware acceleration (OpenGL or Direct3D or BOTH??)
+- GetKeyboardLayout (for French keyboards, international WASD support)
+*/
+
 #include <DSound.h>
 #include <Windows.h>
 #include <Xinput.h>
 #include <cmath>
-#include <combaseapi.h>
 #include <cstdint>
 #include <intrin.h>
-#include <profileapi.h>
+#include <winerror.h>
 #include <winnt.h>
 #include <winrt/Windows.Foundation.Collections.h>
 #include <winuser.h>
@@ -30,6 +47,8 @@ typedef uint64_t uint64;
 
 typedef float real32;
 typedef double real64;
+
+#include "handmade.cpp"
 
 struct Win32OffscreenBuffer {
   BITMAPINFO Info;
@@ -139,6 +158,8 @@ internal void win32_init_direct_audio(HWND Window, int32 SamplesPerSec,
   }
 }
 
+void *platform_load_file(const char *file_name) { return (0); }
+
 // TODO: DIAGNOSTIC LOGGING
 internal void win32_load_xinput(void) {
   HMODULE xinput_library = LoadLibrary("Xinput9_1_0.dll");
@@ -155,107 +176,6 @@ internal void win32_load_xinput(void) {
   }
 }
 
-// TODO: DIAGNOSTIC LOGGING
-// internal void win32_init_direct_audio(int32 samples_per_second, int32
-// buffer_size) {
-//   // Load the lib
-//   // keep  this as static to work lol
-//       internal winrt::com_ptr<IXAudio2> m_xAudio2;
-//       internal IXAudio2SourceVoice* m_pXAudio2SourceVoice;
-//       internal void* m_buffer;
-//   HMODULE x_audio_lib = LoadLibraryA("XAUDIO2_9.DLL");
-//   if (!x_audio_lib) {
-//     return;
-//   }
-//   constexpr WORD BITSPERSSAMPLE = 16;
-//   constexpr double CYCLESPERSEC =
-//       220.0;
-//   constexpr double VOLUME = 0.5;
-//   constexpr WORD AUDIOBUFFERSIZEINCYCLES = 10;
-//   constexpr double PI = 3.14159265358979323846;
-
-//   // Calculated constants.
-// DWORD SAMPLESPERCYCLE =
-//       (DWORD)(samples_per_second / CYCLESPERSEC); // 200 samples per cycle.
-//   DWORD AUDIOBUFFERSIZEINSAMPLES =
-//       samples_per_second * AUDIOBUFFERSIZEINCYCLES; // 2,000 samples per
-//       buffer.
-//   UINT32 AUDIOBUFFERSIZEINBYTES =
-//       AUDIOBUFFERSIZEINSAMPLES * BITSPERSSAMPLE / 8; // 4,000 bytes per
-//       buffer.
-
-//   HRESULT hr = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
-//   if (FAILED(hr)) {
-//     OutputDebugString("failed to initialize COM\n");
-//     return;
-//   }
-//   xaudio2_create *XAudio2Create =
-//       (xaudio2_create *)GetProcAddress(x_audio_lib, "XAudio2Create");
-
-//       if (!XAudio2Create || FAILED(XAudio2Create(m_xAudio2.put(), 0,
-//       XAUDIO2_DEFAULT_PROCESSOR))) {
-//         OutputDebugStringA("Failed to create XAudio2 instance\n");
-//         return;
-//       }
-//     IXAudio2MasteringVoice *m_pXAudio2MasteringVoice{};
-//     m_xAudio2->CreateMasteringVoice(&m_pXAudio2MasteringVoice);
-//     // Clean up the buffer lol
-//     m_buffer =
-//         VirtualAlloc(0, AUDIOBUFFERSIZEINBYTES, MEM_COMMIT, PAGE_READWRITE);
-//     WAVEFORMATEX waveFormatEx;
-//     waveFormatEx.wFormatTag = WAVE_FORMAT_PCM;
-//     waveFormatEx.nChannels = 2;
-//     waveFormatEx.nSamplesPerSec = samples_per_second;
-//     waveFormatEx.wBitsPerSample = 16;
-//     waveFormatEx.nBlockAlign = (waveFormatEx.nChannels *
-//     waveFormatEx.wBitsPerSample) / 8; waveFormatEx.nAvgBytesPerSec =
-//         waveFormatEx.nSamplesPerSec * waveFormatEx.nBlockAlign;
-//     waveFormatEx.cbSize = 0;
-//     HRESULT result =
-//         m_xAudio2->CreateSourceVoice(&m_pXAudio2SourceVoice, &waveFormatEx);
-//     if (FAILED(result)) {
-//       OutputDebugStringA("Failed to create source voice");
-//       return;
-//     }
-//     double phase = 0.0;
-//     uint16 buf_idx = 0;
-//     uint8 *buffer = (uint8 *)m_buffer;
-//     for (DWORD i = 0; i < AUDIOBUFFERSIZEINSAMPLES; ++i) {
-//       double value = sin(phase) * INT16_MAX * VOLUME;
-//       int16_t sample = (int16_t)value;
-//       buffer[2 * i] = (uint8_t)sample;
-//       buffer[2 * i + 1] = (uint8_t)(sample >> 8);
-//       phase += (2 * PI / SAMPLESPERCYCLE);
-//       if (phase >= 2 * PI)
-//         phase -= 2 * PI;
-//     }
-
-//     XAUDIO2_BUFFER audio_buffer = {};
-//      audio_buffer.Flags = XAUDIO2_END_OF_STREAM;
-//      audio_buffer.AudioBytes = AUDIOBUFFERSIZEINBYTES;
-//      audio_buffer.pAudioData = reinterpret_cast<BYTE *>(m_buffer);
-//      audio_buffer.LoopCount = XAUDIO2_LOOP_INFINITE;
-
-//      if (FAILED(m_pXAudio2SourceVoice->SubmitSourceBuffer(&audio_buffer))) {
-//        OutputDebugStringA("Failed to submit source buffer\n");
-//        return;
-//      }
-
-//      if (FAILED(m_pXAudio2SourceVoice->Start(0))) {
-//        OutputDebugStringA("Failed to start source voice\n");
-//        return;
-//      }
-
-//      OutputDebugStringA("Audio playback started\n");
-
-//   // Get a xaudio2 object
-
-//   // Create a primary buffer
-//   // Create a secondary buffer
-//   //
-//   // Start playing it
-// }
-
 internal Win32WindowDimension win32_get_window_dimension(HWND window_handle) {
   Win32WindowDimension window_dimensions;
   RECT client_rect;
@@ -267,30 +187,30 @@ internal Win32WindowDimension win32_get_window_dimension(HWND window_handle) {
   return window_dimensions;
 }
 
-internal void RenderWeirdGradient(Win32OffscreenBuffer *buffer, int x_offset,
-                                  int y_offset) {
-  uint8 *row = (uint8 *)buffer->Memory;
-  for (int y = 0; y < buffer->Height; ++y) {
-    // the size is 32 cause of the RGB padding is set to 32
-    uint32 *Pixel = (uint32 *)row;
-    for (int x = 0; x < buffer->Width; ++x) {
-      /*
-                          8  8  8  8
-          Pixel in memory BB GG RR xx
-          Little Endian arch
-      */
+// internal void RenderWeirdGradient(Win32OffscreenBuffer *buffer, int x_offset,
+//                                   int y_offset) {
+//   uint8 *row = (uint8 *)buffer->Memory;
+//   for (int y = 0; y < buffer->Height; ++y) {
+//     // the size is 32 cause of the RGB padding is set to 32
+//     uint32 *Pixel = (uint32 *)row;
+//     for (int x = 0; x < buffer->Width; ++x) {
+//       /*
+//                           8  8  8  8
+//           Pixel in memory BB GG RR xx
+//           Little Endian arch
+//       */
 
-      /*
-        Memory:    BB GG RR xx
-        Register:  xx RR GG BB
-      */
-      uint8 blue = (x + x_offset);
-      uint8 green = (y + y_offset);
-      *Pixel++ = ((green << 8) | blue);
-    }
-    row += buffer->Pitch;
-  }
-}
+//       /*
+//         Memory:    BB GG RR xx
+//         Register:  xx RR GG BB
+//       */
+//       uint8 blue = (x + x_offset);
+//       uint8 green = (y + y_offset);
+//       *Pixel++ = ((green << 8) | blue);
+//     }
+//     row += buffer->Pitch;
+//   }
+// }
 
 // Resizes or recreates the DIB section to match the new window dimensions
 internal void Win32ResizeDIBSection(Win32OffscreenBuffer *buffer, int width,
@@ -342,8 +262,8 @@ LRESULT Win32MainWindowCallback(HWND hInstance, UINT uMsg, WPARAM wParam,
   case WM_SYSKEYDOWN:
   case WM_KEYUP: {
     uint32 vk_code = wParam;
-    bool was_down = ((lParam & (1 << 30)));
-    bool is_down = ((lParam & (1 << 31)));
+    bool was_down = ((lParam & (1 << 30))) != 0;
+    bool is_down = ((lParam & (1 << 31))) == 0;
     if (was_down != is_down) {
       if (vk_code == 'W') {
       } else if (vk_code == 'A') {
@@ -522,8 +442,9 @@ int WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine,
         }
         for (DWORD controller_index = 0; controller_index < XUSER_MAX_COUNT;
              controller_index++) {
-          XINPUT_STATE controller_state = {};
-          if (XInputGetState(controller_index, &controller_state)) {
+          XINPUT_STATE controller_state;
+          if (XInputGetState(controller_index, &controller_state) ==
+              ERROR_SUCCESS) {
             XINPUT_GAMEPAD *pad = &controller_state.Gamepad;
             BOOL up = (pad->wButtons & XINPUT_GAMEPAD_DPAD_UP);
             BOOL down = (pad->wButtons & XINPUT_GAMEPAD_DPAD_DOWN);
@@ -536,11 +457,19 @@ int WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine,
             BOOL b_button = (pad->wButtons & XINPUT_GAMEPAD_B);
             BOOL x_button = (pad->wButtons & XINPUT_GAMEPAD_X);
             BOOL y_button = (pad->wButtons & XINPUT_GAMEPAD_Y);
+            int16 StickX = pad->sThumbLX;
+            int16 StickY = pad->sThumbLY;
 
-            int16 stick_x = pad->sThumbLX;
-            int16 stick_y = pad->sThumbLY;
-            x_offset += stick_x >> 12;
-            y_offset += stick_y >> 12;
+            if (abs(StickX) > XINPUT_GAMEPAD_LEFT_THUMB_DEADZONE) {
+              x_offset += StickX >> 12;
+            }
+            if (abs(StickY) > XINPUT_GAMEPAD_LEFT_THUMB_DEADZONE) {
+              y_offset -= StickY >> 12;
+            }
+            sound_output.tone_hz =
+                512 + ((256.0 * ((real32)StickY / (real32)SHRT_MAX)));
+            sound_output.wave_period =
+                sound_output.samples_per_second / sound_output.tone_hz;
           } else {
           }
         }
@@ -548,7 +477,13 @@ int WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine,
         vibration.wLeftMotorSpeed = 60000;
         vibration.wRightMotorSpeed = 60000;
         XInputSetState(0, &vibration);
-        RenderWeirdGradient(&global_back_buffer, x_offset, y_offset);
+        Game32OffscreenBuffer buffer = {};
+        buffer.Memory = global_back_buffer.Memory;
+        buffer.Width = global_back_buffer.Width;
+        buffer.Height = global_back_buffer.Height;
+        buffer.BytesPerPixel = global_back_buffer.BytesPerPixel;
+        buffer.Pitch = global_back_buffer.Pitch;
+        game_update_and_render(&buffer, x_offset, y_offset);
         DWORD play_cursor;
         DWORD write_cusror;
         bool sound_is_playing = false;
@@ -582,18 +517,19 @@ int WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine,
         uint64 end_cycle_count = __rdtsc();
         LARGE_INTEGER end_counter;
         QueryPerformanceCounter(&end_counter);
-
         uint64 cycle_elapsed = end_cycle_count - last_cycle_count;
         int64 counter_elapsed = end_counter.QuadPart - last_counter.QuadPart;
         real32 ms_per_frame = (real32)(((real32)counter_elapsed * 1000.0f) /
                                        pref_count_frequency);
         real32 fps = (real32)pref_count_frequency / (real32)counter_elapsed;
         real32 mcpf = (real32)((real32)cycle_elapsed / (1000.0f * 1000.0f));
+#if 0
         // use this part for debug
         char buffer[256];
         sprintf(buffer, "%fms/f / %fFPS/s %fmc/f \n", ms_per_frame, fps, mcpf);
         OutputDebugStringA(buffer);
         //
+#endif
         last_counter = end_counter;
       }
     } else {
