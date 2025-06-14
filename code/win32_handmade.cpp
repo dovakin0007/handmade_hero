@@ -21,7 +21,10 @@
 #include <Xinput.h>
 #include <cmath>
 #include <cstdint>
+#include <debugapi.h>
 #include <intrin.h>
+#include <memoryapi.h>
+#include <minwindef.h>
 #include <winerror.h>
 #include <winnt.h>
 #include <winrt/Windows.Foundation.Collections.h>
@@ -187,31 +190,6 @@ internal Win32WindowDimension win32_get_window_dimension(HWND window_handle) {
   return window_dimensions;
 }
 
-// internal void RenderWeirdGradient(Win32OffscreenBuffer *buffer, int x_offset,
-//                                   int y_offset) {
-//   uint8 *row = (uint8 *)buffer->Memory;
-//   for (int y = 0; y < buffer->Height; ++y) {
-//     // the size is 32 cause of the RGB padding is set to 32
-//     uint32 *Pixel = (uint32 *)row;
-//     for (int x = 0; x < buffer->Width; ++x) {
-//       /*
-//                           8  8  8  8
-//           Pixel in memory BB GG RR xx
-//           Little Endian arch
-//       */
-
-//       /*
-//         Memory:    BB GG RR xx
-//         Register:  xx RR GG BB
-//       */
-//       uint8 blue = (x + x_offset);
-//       uint8 green = (y + y_offset);
-//       *Pixel++ = ((green << 8) | blue);
-//     }
-//     row += buffer->Pitch;
-//   }
-// }
-
 // Resizes or recreates the DIB section to match the new window dimensions
 internal void Win32ResizeDIBSection(Win32OffscreenBuffer *buffer, int width,
                                     int height) {
@@ -331,57 +309,73 @@ struct Win32_Sound_Output {
   int samples_per_second;
   int tone_hz;
   int tone_volume;
+  int latency_sample_count;
   uint32 running_sample_index;
   int wave_period;
   int bytes_per_sample;
   int secondary_buffer_size;
 };
 
-internal void win32_fill_sound_buffer(Win32_Sound_Output *sound_output,
-                                      DWORD byte_to_lock,
-                                      DWORD bytes_to_write) {
+internal void win32_clear_sound_buffer(Win32_Sound_Output *sound_output) {
   VOID *region1;
   DWORD region1_size;
   VOID *region2;
   DWORD region2_size;
+
+  if (SUCCEEDED(global_secondary_buffer->Lock(
+          0, sound_output->secondary_buffer_size, &region1, &region1_size,
+          &region2, &region2_size, 0))) {
+    uint8 *dest_sample = (uint8 *)region1;
+    for (DWORD byte_index = 0; byte_index < region1_size; ++byte_index) {
+      *dest_sample++ = 0;
+    }
+    dest_sample = (uint8 *)region2;
+    for (DWORD byte_index = 0; byte_index < region2_size; ++byte_index) {
+      *dest_sample++ = 0;
+    }
+    global_secondary_buffer->Unlock(region1, region1_size, region2,
+                                    region2_size);
+  }
+}
+
+internal void win32_fill_sound_buffer(Win32_Sound_Output *sound_output,
+                                      DWORD byte_to_lock, DWORD bytes_to_write,
+                                      GameSoundOutputBuffer *source_buffer) {
+  VOID *region1;
+  DWORD region1_size;
+  VOID *region2;
+  DWORD region2_size;
+
   if (SUCCEEDED(global_secondary_buffer->Lock(byte_to_lock, bytes_to_write,
                                               &region1, &region1_size, &region2,
                                               &region2_size, 0))) {
     DWORD region1_sample_count = region1_size / sound_output->bytes_per_sample;
     DWORD region2_sample_count = region2_size / sound_output->bytes_per_sample;
-    real32 wave_period = (real32)sound_output->wave_period;
-    real32 samples_per_second = (real32)sound_output->samples_per_second;
 
-    int16 *sample_out1 = (int16 *)region1;
+    int16 *dest_sample = (int16 *)region1;
+    int16 *source_sample = source_buffer->samples;
+
+    // Fill region 1
     for (DWORD sample_idx = 0; sample_idx < region1_sample_count;
          ++sample_idx) {
-      real32 t =
-          (real32)sound_output->running_sample_index / samples_per_second;
-      real32 sine_value = sinf(2.0f * PI32 * sound_output->tone_hz * t);
-      int16 sample_value = (int16)(sine_value * sound_output->tone_volume);
-
-      *sample_out1++ = sample_value;
-      *sample_out1++ = sample_value;
+      *dest_sample++ = *source_sample++;
+      *dest_sample++ = *source_sample++;
       ++sound_output->running_sample_index;
     }
 
-    int16 *sample_out2 = (int16 *)region2;
+    // Fill region 2
+    dest_sample = (int16 *)region2;
     for (DWORD sample_idx = 0; sample_idx < region2_sample_count;
          ++sample_idx) {
-      real32 t =
-          (real32)sound_output->running_sample_index / samples_per_second;
-      real32 sine_value = sinf(2.0f * PI32 * sound_output->tone_hz * t);
-      int16 sample_value = (int16)(sine_value * sound_output->tone_volume);
-
-      *sample_out2++ = sample_value;
-      *sample_out2++ = sample_value;
+      *dest_sample++ = *source_sample++;
+      *dest_sample++ = *source_sample++;
       ++sound_output->running_sample_index;
     }
-    global_secondary_buffer->Unlock(&region1, region1_size, &region2,
+
+    global_secondary_buffer->Unlock(region1, region1_size, region2,
                                     region2_size);
   }
 }
-
 int WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine,
             int nShowCmd) {
   win32_load_xinput();
@@ -413,6 +407,7 @@ int WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine,
 
       Win32_Sound_Output sound_output = {};
       sound_output.samples_per_second = 48000;
+      sound_output.latency_sample_count = sound_output.samples_per_second / 15;
       sound_output.tone_hz = 256;
       sound_output.tone_volume = 3000;
       sound_output.running_sample_index = 0;
@@ -424,10 +419,11 @@ int WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine,
 
       win32_init_direct_audio(window_handle, sound_output.samples_per_second,
                               sound_output.secondary_buffer_size);
-      win32_fill_sound_buffer(&sound_output, 0,
-                              sound_output.secondary_buffer_size);
+      win32_clear_sound_buffer(&sound_output);
       global_secondary_buffer->Play(0, 0, DSBPLAY_LOOPING);
-
+      int16 *sound_memory =
+          (int16 *)VirtualAlloc(0, sound_output.secondary_buffer_size,
+                                MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
       LARGE_INTEGER last_counter;
       QueryPerformanceCounter(&last_counter);
       uint64 last_cycle_count = __rdtsc();
@@ -459,7 +455,6 @@ int WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine,
             BOOL y_button = (pad->wButtons & XINPUT_GAMEPAD_Y);
             int16 StickX = pad->sThumbLX;
             int16 StickY = pad->sThumbLY;
-
             if (abs(StickX) > XINPUT_GAMEPAD_LEFT_THUMB_DEADZONE) {
               x_offset += StickX >> 12;
             }
@@ -467,7 +462,7 @@ int WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine,
               y_offset -= StickY >> 12;
             }
             sound_output.tone_hz =
-                512 + ((256.0 * ((real32)StickY / (real32)SHRT_MAX)));
+                512 + (450.0 * ((real32)StickY / (real32)SHRT_MAX));
             sound_output.wave_period =
                 sound_output.samples_per_second / sound_output.tone_hz;
           } else {
@@ -477,33 +472,52 @@ int WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine,
         vibration.wLeftMotorSpeed = 60000;
         vibration.wRightMotorSpeed = 60000;
         XInputSetState(0, &vibration);
-        Game32OffscreenBuffer buffer = {};
+
+        DWORD byte_to_lock = 0;
+        DWORD target_cursor = 0;
+        DWORD bytes_to_write = 0;
+        DWORD play_cursor = 0;
+        DWORD write_cursor = 0;
+        bool32 sound_is_valid = false;
+        // TODO: tighten up sound logic so that we know where  we should be
+        //  writing to and can anticipate the time spent in the game update.
+        if (SUCCEEDED(global_secondary_buffer->GetCurrentPosition(
+                &play_cursor, &write_cursor))) {
+          byte_to_lock = ((sound_output.running_sample_index *
+                           sound_output.bytes_per_sample) %
+                          sound_output.secondary_buffer_size);
+          target_cursor = ((play_cursor + (sound_output.latency_sample_count *
+                                           sound_output.bytes_per_sample)) %
+                           sound_output.secondary_buffer_size);
+
+          if (byte_to_lock > target_cursor) {
+            bytes_to_write = sound_output.secondary_buffer_size - byte_to_lock;
+            bytes_to_write += target_cursor;
+          } else {
+            bytes_to_write = target_cursor - byte_to_lock;
+          }
+
+          sound_is_valid = true;
+        }
+
+        GameSoundOutputBuffer sound_buffer = {};
+
+        sound_buffer.samples_per_second = sound_output.samples_per_second;
+        sound_buffer.sample_count =
+            bytes_to_write / sound_output.bytes_per_sample;
+        sound_buffer.samples = sound_memory;
+
+        GameOffscreenBuffer buffer = {};
         buffer.Memory = global_back_buffer.Memory;
         buffer.Width = global_back_buffer.Width;
         buffer.Height = global_back_buffer.Height;
         buffer.BytesPerPixel = global_back_buffer.BytesPerPixel;
         buffer.Pitch = global_back_buffer.Pitch;
-        game_update_and_render(&buffer, x_offset, y_offset);
-        DWORD play_cursor;
-        DWORD write_cusror;
-        bool sound_is_playing = false;
-        if (SUCCEEDED(global_secondary_buffer->GetCurrentPosition(
-                &play_cursor, &write_cusror))) {
-          DWORD byte_to_lock = ((sound_output.running_sample_index *
-                                 sound_output.bytes_per_sample) %
-                                sound_output.secondary_buffer_size);
-          DWORD bytes_to_write;
-          // TODO: more accurate play cursor change detection
-          // TODO: Change it to more lower latency offset
-          if (byte_to_lock == play_cursor) {
-            bytes_to_write = 0;
-          } else if (byte_to_lock > play_cursor) {
-            bytes_to_write = sound_output.secondary_buffer_size - byte_to_lock;
-            bytes_to_write += play_cursor;
-          } else {
-            bytes_to_write = play_cursor - byte_to_lock;
-          }
-          win32_fill_sound_buffer(&sound_output, byte_to_lock, bytes_to_write);
+        game_update_and_render(&buffer, x_offset, y_offset, &sound_buffer,
+                               sound_output.tone_hz);
+        if (sound_is_valid) {
+          win32_fill_sound_buffer(&sound_output, byte_to_lock, bytes_to_write,
+                                  &sound_buffer);
         }
 
         HDC device_context = GetDC(window_handle);
@@ -535,7 +549,6 @@ int WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine,
     } else {
       // TODO: logging
     }
-
   } else {
     OutputDebugString("Failed to register WNDCLASS\n");
   }
