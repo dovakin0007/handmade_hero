@@ -1,5 +1,6 @@
 #include "handmade.h"
 #include <cmath>
+#include <cstdio>
 #include <windows.h>
 
 internal void RenderWeirdGradient(GameOffscreenBuffer *buffer, int x_offset,
@@ -44,9 +45,30 @@ internal void game_output_sound(GameSoundOutputBuffer *sound_buffer,
   }
 }
 
-void game_update_and_render(GameOffscreenBuffer *buffer, int blue_offset,
-                            int green_offset,
-                            GameSoundOutputBuffer *sound_buffer, int tone_hz) {
+void game_update_and_render(GameInput *input, GameOffscreenBuffer *buffer,
+                            GameSoundOutputBuffer *sound_buffer) {
+  local_persist int blue_offset = 0;
+  local_persist int green_offset = 0;
+  local_persist int tone_hz = 256;
+  GameControllerInput input0 = input->controllers[0];
+  if (input0.is_analog) {
+
+    blue_offset += (int)4.0f * (input0.end_x);
+    tone_hz = 256 + (int)(128.0f * (input0.end_y));
+  } else {
+  }
+  // input.Abutton_ended_down;
+  // input.Abutton_half_transition_count;
+  char debug_buffer[128];
+  sprintf(debug_buffer, "down.ended_down = %d\n", input0.down.ended_down);
+  OutputDebugStringA(debug_buffer);
+
+  if (input0.down.ended_down) {
+    green_offset += 1;
+  }
+  if (input0.down.ended_down) {
+    green_offset += 1;
+  }
 
   // TODO Allow sample offsets for more robust platform options
   game_output_sound(sound_buffer, tone_hz);
