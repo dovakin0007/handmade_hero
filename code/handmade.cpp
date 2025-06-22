@@ -45,16 +45,23 @@ internal void game_output_sound(GameSoundOutputBuffer *sound_buffer,
   }
 }
 
-void game_update_and_render(GameInput *input, GameOffscreenBuffer *buffer,
+void game_update_and_render(GameMemory *memory, GameInput *input,
+                            GameOffscreenBuffer *buffer,
                             GameSoundOutputBuffer *sound_buffer) {
-  local_persist int blue_offset = 0;
-  local_persist int green_offset = 0;
-  local_persist int tone_hz = 256;
+  Assert(sizeof(GameState) <= memory->permanent_storage_space);
+  GameState *game_state = (GameState *)memory->permanent_storage;
+  if (!memory->is_initialized) {
+    game_state->tone_hz = 256;
+
+    // TODO: this may be more appropriate to do in platform layer
+    memory->is_initialized = true;
+  }
+
   GameControllerInput input0 = input->controllers[0];
   if (input0.is_analog) {
 
-    blue_offset += (int)4.0f * (input0.end_x);
-    tone_hz = 256 + (int)(128.0f * (input0.end_y));
+    game_state->blue_offset += (int)4.0f * (input0.end_x);
+    game_state->tone_hz = 256 + (int)(128.0f * (input0.end_y));
   } else {
   }
   // input.Abutton_ended_down;
@@ -64,13 +71,14 @@ void game_update_and_render(GameInput *input, GameOffscreenBuffer *buffer,
   OutputDebugStringA(debug_buffer);
 
   if (input0.down.ended_down) {
-    green_offset += 1;
+    game_state->green_offset += 1;
   }
   if (input0.down.ended_down) {
-    green_offset += 1;
+    game_state->green_offset += 1;
   }
 
   // TODO Allow sample offsets for more robust platform options
-  game_output_sound(sound_buffer, tone_hz);
-  RenderWeirdGradient(buffer, blue_offset, green_offset);
+  game_output_sound(sound_buffer, game_state->tone_hz);
+  RenderWeirdGradient(buffer, game_state->blue_offset,
+                      game_state->green_offset);
 }
