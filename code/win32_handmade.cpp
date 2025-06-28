@@ -23,7 +23,10 @@
 #include <cstdint>
 #include <ctime>
 #include <debugapi.h>
+#include <fileapi.h>
+#include <handleapi.h>
 #include <intrin.h>
+#include <memoryapi.h>
 #include <minwindef.h>
 #include <winnt.h>
 #include <winrt/Windows.Foundation.Collections.h>
@@ -76,6 +79,67 @@ global_variable x_input_set_state *XInputSetState_ = XInputSetStateStub;
   HRESULT WINAPI name(LPCGUID pcGuidDevice, LPDIRECTSOUND *ppDS,               \
                       LPUNKNOWN pUnkOuter);
 typedef DIRECT_SOUND_CREATE(direct_sound_create);
+
+#if HANDMADE_INTERNAL
+DebugReadFileResult debug_platform_read_entire_file(char *file_name) {
+  DebugReadFileResult debug_file_result = {};
+  HANDLE file_handle = CreateFile(file_name, GENERIC_READ, FILE_SHARE_READ, 0,
+                                  OPEN_EXISTING, 0, 0);
+
+  if (file_handle != INVALID_HANDLE_VALUE) {
+    LARGE_INTEGER file_size;
+    if (GetFileSizeEx(file_handle, &file_size)) {
+
+      uint32 file_size32 = safe_truncate_uint64(file_size.QuadPart);
+      debug_file_result.contents = VirtualAlloc(
+          0, file_size32, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
+      if (debug_file_result.contents) {
+        DWORD bytes_read;
+        if (ReadFile(file_handle, debug_file_result.contents, file_size32,
+                     &bytes_read, 0) &&
+            (bytes_read == file_size32)) {
+          debug_file_result.content_size = file_size32;
+        } else {
+          debug_platform_free_file_memory(debug_file_result.contents);
+          debug_file_result.contents = 0;
+          debug_file_result.content_size = 0;
+        }
+      } else {
+      }
+    } else {
+    }
+    CloseHandle(file_handle);
+  } else {
+  }
+
+  return debug_file_result;
+}
+internal void debug_platform_free_file_memory(void *memory) {
+  VirtualFree(memory, 0, MEM_RELEASE);
+}
+internal bool32 debug_platform_write_entire_file(char *file_name, void *memory,
+                                                 uint32 memory_size) {
+  bool32 result = false;
+  HANDLE file_handle =
+      CreateFile(file_name, GENERIC_WRITE, 0, 0, CREATE_ALWAYS, 0, 0);
+  if (file_handle != INVALID_HANDLE_VALUE) {
+    LARGE_INTEGER file_size;
+
+    DWORD bytes_written;
+    if (WriteFile(file_handle, memory, memory_size, &bytes_written, 0)) {
+      result = (bytes_written == memory_size);
+    } else {
+      // TODO: Logging
+    }
+    CloseHandle(file_handle);
+  } else {
+    // TODO: Logging
+  }
+
+  return result;
+}
+
+#endif
 
 internal void win32_init_direct_audio(HWND Window, int32 SamplesPerSec,
                                       int32 BufferSize) {
