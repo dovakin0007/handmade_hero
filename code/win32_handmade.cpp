@@ -123,8 +123,6 @@ internal bool32 debug_platform_write_entire_file(char *file_name, void *memory,
   HANDLE file_handle =
       CreateFile(file_name, GENERIC_WRITE, 0, 0, CREATE_ALWAYS, 0, 0);
   if (file_handle != INVALID_HANDLE_VALUE) {
-    LARGE_INTEGER file_size;
-
     DWORD bytes_written;
     if (WriteFile(file_handle, memory, memory_size, &bytes_written, 0)) {
       result = (bytes_written == memory_size);
@@ -204,8 +202,6 @@ internal void win32_init_direct_audio(HWND Window, int32 SamplesPerSec,
   }
 }
 
-void *platform_load_file(const char *file_name) { return (0); }
-
 // TODO: DIAGNOSTIC LOGGING
 internal void win32_load_xinput(void) {
   HMODULE xinput_library = LoadLibrary("Xinput9_1_0.dll");
@@ -231,6 +227,84 @@ internal Win32WindowDimension win32_get_window_dimension(HWND window_handle) {
   window_dimensions.Height = client_rect.bottom - client_rect.top;
 
   return window_dimensions;
+}
+
+internal void win32_process_digital_xinput_button(DWORD x_input_button_state,
+                                                  GameButtonState *old_state,
+                                                  DWORD button_bit,
+                                                  GameButtonState *new_state) {
+
+  new_state->ended_down = (x_input_button_state & button_bit);
+  new_state->half_transition_count =
+      old_state->ended_down != new_state->ended_down ? 1 : 0;
+}
+
+internal void win32_process_key_board_message(GameButtonState *new_state,
+                                              bool32 is_down) {
+  OutputDebugStringA("worked at keyboard");
+  new_state->ended_down = is_down;
+  ++new_state->half_transition_count;
+}
+
+internal void
+win32_process_pending_messages(GameControllerInput *keyboard_controller) {
+  MSG message = {};
+  while (PeekMessage(&message, 0, 0, 0, PM_REMOVE)) {
+    OutputDebugStringA("message got captured");
+    switch (message.message) {
+    case WM_QUIT: {
+      GLOBALRUNNING = false;
+      break;
+    }
+
+    case WM_SYSKEYDOWN:
+    case WM_SYSKEYUP:
+    case WM_KEYDOWN:
+    case WM_KEYUP: {
+      uint32 vk_code = (uint32)message.wParam;
+      bool was_down = ((message.lParam & (1 << 30))) != 0;
+      bool is_down = ((message.lParam & (1 << 31))) == 0;
+      if (was_down != is_down) {
+        if (vk_code == 'W') {
+        } else if (vk_code == 'A') {
+        } else if (vk_code == 'S') {
+        } else if (vk_code == 'D') {
+        } else if (vk_code == 'Q') {
+          win32_process_key_board_message(&keyboard_controller->left_shoulder,
+                                          is_down);
+        } else if (vk_code == 'E') {
+          win32_process_key_board_message(&keyboard_controller->right_shoulder,
+                                          is_down);
+        } else if (vk_code == VK_UP) {
+          win32_process_key_board_message(&keyboard_controller->up, is_down);
+        } else if (vk_code == VK_LEFT) {
+          win32_process_key_board_message(&keyboard_controller->left, is_down);
+        } else if (vk_code == VK_DOWN) {
+          win32_process_key_board_message(&keyboard_controller->down, is_down);
+        } else if (vk_code == VK_RIGHT) {
+          win32_process_key_board_message(&keyboard_controller->right, is_down);
+        } else if (vk_code == VK_ESCAPE) {
+          OutputDebugStringA("ESCAPE: ");
+          if (is_down) {
+            OutputDebugStringA("IS DOWN ");
+          }
+          OutputDebugStringA("\n");
+        } else if (vk_code == VK_SPACE) {
+        }
+      }
+      bool32 alt_key_was_down = ((message.lParam & (1 << 29)));
+      if ((vk_code == VK_F4) && alt_key_was_down) {
+        GLOBALRUNNING = false;
+      }
+      break;
+    }
+    default: {
+      TranslateMessage(&message);
+      DispatchMessage(&message);
+      break;
+    }
+    }
+  }
 }
 
 // Resizes or recreates the DIB section to match the new window dimensions
@@ -282,35 +356,7 @@ LRESULT Win32MainWindowCallback(HWND hInstance, UINT uMsg, WPARAM wParam,
   case WM_KEYDOWN:
   case WM_SYSKEYDOWN:
   case WM_KEYUP: {
-    uint32 vk_code = wParam;
-    bool was_down = ((lParam & (1 << 30))) != 0;
-    bool is_down = ((lParam & (1 << 31))) == 0;
-    if (was_down != is_down) {
-      if (vk_code == 'W') {
-      } else if (vk_code == 'A') {
-      } else if (vk_code == 'S') {
-      } else if (vk_code == 'D') {
-      } else if (vk_code == 'Q') {
-      } else if (vk_code == VK_UP) {
-      } else if (vk_code == VK_LEFT) {
-      } else if (vk_code == VK_DOWN) {
-      } else if (vk_code == VK_RIGHT) {
-      } else if (vk_code == VK_ESCAPE) {
-        OutputDebugStringA("ESCAPE: ");
-        if (was_down) {
-          OutputDebugString("WAS DOWN ");
-        }
-        if (is_down) {
-          OutputDebugStringA("IS DOWN ");
-        }
-        OutputDebugStringA("\n");
-      } else if (vk_code == VK_SPACE) {
-      }
-    }
-    bool32 alt_key_was_down = ((lParam & (1 << 29)));
-    if ((vk_code == VK_F4) && alt_key_was_down) {
-      GLOBALRUNNING = false;
-    }
+    Assert(!"Keyboard input came in through a non dispatch event");
     break;
   };
 
@@ -409,15 +455,6 @@ internal void win32_fill_sound_buffer(Win32_Sound_Output *sound_output,
   }
 }
 
-internal void win32_process_digital_xinput_button(DWORD x_input_button_state,
-                                                  GameButtonState *old_state,
-                                                  DWORD button_bit,
-                                                  GameButtonState *new_state) {
-
-  new_state->ended_down = (x_input_button_state & button_bit);
-  new_state->half_transition_count =
-      (old_state->ended_down == new_state->ended_down) ? 1 : 0;
-}
 int WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine,
             int nShowCmd) {
   win32_load_xinput();
@@ -483,21 +520,13 @@ int WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine,
         GameInput input[2] = {};
         GameInput *new_input = &input[0];
         GameInput *old_input = &input[1];
-
+        GameControllerInput *keyboard_controller = &new_input->controllers[0];
         LARGE_INTEGER last_counter;
         QueryPerformanceCounter(&last_counter);
         uint64 last_cycle_count = __rdtsc();
         while (GLOBALRUNNING) {
-          GameInput input = {};
-          MSG message = {};
-          while (PeekMessage(&message, 0, 0, 0, PM_REMOVE)) {
-            if (message.message == WM_QUIT) {
-              GLOBALRUNNING = false;
-            }
-            TranslateMessage(&message);
-            DispatchMessage(&message);
-          }
-          int max_controller_count = XUSER_MAX_COUNT;
+          win32_process_pending_messages(keyboard_controller);
+          DWORD max_controller_count = XUSER_MAX_COUNT;
           if (max_controller_count > ArrayCount(new_input->controllers)) {
             max_controller_count = ArrayCount(new_input->controllers);
           }
@@ -641,7 +670,7 @@ int WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine,
 #if 0
         // use this part for debug
         char buffer[256];
-        sprintf(buffer, "%fms/f / %fFPS/s %fmc/f \n", ms_per_frame, fps, mcpf);
+        sprintf_s(buffer,sizeof(buffer) ,"%fms/f / %fFPS/s %fmc/f \n", ms_per_frame, fps, mcpf);
         OutputDebugStringA(buffer);
         //
 #endif

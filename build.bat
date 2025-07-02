@@ -7,10 +7,13 @@ if "%BUILD_TYPE%"=="" (
     set "BUILD_TYPE=Debug"
 )
 
+echo ==================================================
 echo Building configuration: %BUILD_TYPE%
+echo ==================================================
 
-:: Remove build directory if it exists
+:: Remove build directory if it exists (full cleanup)
 if exist build (
+    echo Removing existing build directory...
     rmdir /s /q build
 )
 
@@ -18,19 +21,24 @@ if exist build (
 mkdir build
 cd build
 
-:: Clean previous build artifacts
-cmake --build . --target clean >nul 2>&1
-
 :: Set HANDMADE_SLOW and HANDMADE_INTERNAL for Debug builds
 set "EXTRA_DEFINES="
 if /I "%BUILD_TYPE%"=="Debug" (
     set "EXTRA_DEFINES=-DHANDMADE_SLOW=1 -DHANDMADE_INTERNAL=1"
 )
 
-:: Generate CMake files with selected build type and extra defines
-cmake .. -DCMAKE_BUILD_TYPE=%BUILD_TYPE% %EXTRA_DEFINES% || exit /b 1
+:: Configure with CMake
+echo Configuring CMake...
+cmake .. -DCMAKE_BUILD_TYPE=%BUILD_TYPE% %EXTRA_DEFINES%
+if errorlevel 1 exit /b 1
 
 :: Build the project
-cmake --build . --config %BUILD_TYPE% || exit /b 1
+echo Building project...
+cmake --build . --config %BUILD_TYPE%
+if errorlevel 1 exit /b 1
+
+echo ==================================================
+echo Build completed successfully!
+echo ==================================================
 
 endlocal

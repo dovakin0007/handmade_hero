@@ -20,8 +20,8 @@ internal void RenderWeirdGradient(GameOffscreenBuffer *buffer, int x_offset,
         Memory:    BB GG RR xx
         Register:  xx RR GG BB
       */
-      uint8 blue = (x + x_offset);
-      uint8 green = (y + y_offset);
+      uint8 blue = (uint8)(x + x_offset);
+      uint8 green = (uint8)(y + y_offset);
       *Pixel++ = ((green << 8) | blue);
     }
     row += buffer->Pitch;
@@ -70,20 +70,22 @@ void game_update_and_render(GameMemory *memory, GameInput *input,
   GameControllerInput input0 = input->controllers[0];
   if (input0.is_analog) {
 
-    game_state->blue_offset += (int)4.0f * (input0.end_x);
+    game_state->blue_offset += (int)(4.0f * (input0.end_x));
     game_state->tone_hz = 256 + (int)(128.0f * (input0.end_y));
   } else {
   }
   // input.Abutton_ended_down;
   // input.Abutton_half_transition_count;
-  char debug_buffer[128];
-  sprintf(debug_buffer, "down.ended_down = %d\n", input0.down.ended_down);
-  OutputDebugStringA(debug_buffer);
+  // char debug_buffer[128];
+  // sprintf_s(debug_buffer, sizeof(debug_buffer), "down.ended_down = %d\n",
+  //           input0.down.ended_down);
+  // OutputDebugStringA(debug_buffer);
 
   if (input0.down.ended_down) {
     game_state->green_offset += 1;
   }
   if (input0.down.ended_down) {
+
     game_state->green_offset += 1;
   }
 

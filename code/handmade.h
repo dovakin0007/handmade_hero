@@ -49,7 +49,7 @@ inline uint32 safe_truncate_uint64(uint64 value) {
   Assert(value < 0xFFFFFFFF);
   uint32 value32 = (uint32)value;
   return value32;
-}
+};
 
 struct GameSoundOutputBuffer {
   int samples_per_second;
