@@ -40,6 +40,8 @@ internal bool32 debug_platform_write_entire_file(char *file_name, void *memory,
 #define Assert(expression)
 #endif
 
+#define ArrayCount(Array) (sizeof(Array) / sizeof((Array)[0]))
+
 #define Kilobytes(x) ((x) * 1024)
 #define Megabytes(x) (Kilobytes(x) * 1024)
 #define Gigabytes(x) (Megabytes(x) * 1024)
@@ -71,35 +73,42 @@ struct GameButtonState {
 };
 
 struct GameControllerInput {
+  bool32 is_connected;
   bool32 is_analog;
-
-  real32 start_x;
-  real32 start_y;
-
-  real32 min_x;
-  real32 min_y;
-
-  real32 max_x;
-  real32 max_y;
-
-  real32 end_x;
-  real32 end_y;
+  real32 stick_average_x;
+  real32 stick_average_y;
 
   union {
-    GameButtonState buttons[6];
+    GameButtonState buttons[10];
     struct {
-      GameButtonState up;
-      GameButtonState down;
-      GameButtonState left;
-      GameButtonState right;
+      GameButtonState move_up;
+      GameButtonState move_down;
+      GameButtonState move_left;
+      GameButtonState move_right;
+
+      GameButtonState action_up;
+      GameButtonState action_down;
+      GameButtonState action_left;
+      GameButtonState action_right;
+
       GameButtonState left_shoulder;
       GameButtonState right_shoulder;
+
+      GameButtonState start;
+      GameButtonState back;
     };
   };
 };
 struct GameInput {
-  GameControllerInput controllers[4];
+  GameControllerInput controllers[5];
 };
+
+inline GameControllerInput *get_controller(GameInput *input,
+                                           int controller_idx) {
+  Assert(controller_idx < ArrayCount(input->controllers));
+  GameControllerInput *result = &input->controllers[controller_idx];
+  return result;
+}
 
 struct GameMemory {
   bool32 is_initialized;

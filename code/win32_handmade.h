@@ -1,7 +1,5 @@
 #pragma once
 
-#define ArrayCount(Array) (sizeof(Array) / sizeof((Array)[0]))
-
 #include <wingdi.h>
 
 struct Win32OffscreenBuffer {

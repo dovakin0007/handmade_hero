@@ -66,27 +66,33 @@ void game_update_and_render(GameMemory *memory, GameInput *input,
     // TODO: this may be more appropriate to do in platform layer
     memory->is_initialized = true;
   }
+  for (int controller_idx = 0; controller_idx < ArrayCount(input->controllers);
+       ++controller_idx) {
+    GameControllerInput *controller = get_controller(input, controller_idx);
+    if (controller->is_analog) {
 
-  GameControllerInput input0 = input->controllers[0];
-  if (input0.is_analog) {
+      game_state->blue_offset += (int)(4.0f * (controller->stick_average_x));
+      game_state->tone_hz = 256 + (int)(128.0f * (controller->stick_average_y));
+    } else {
+      if (controller->move_left.ended_down) {
+        game_state->blue_offset -= 1;
+      }
+      if (controller->move_right.ended_down) {
+        game_state->blue_offset += 1;
+      }
+    }
+    char debug_buffer[128];
+    sprintf_s(debug_buffer, sizeof(debug_buffer), "down.ended_down = %d\n",
+              controller->action_down.ended_down);
+    OutputDebugStringA(debug_buffer);
 
-    game_state->blue_offset += (int)(4.0f * (input0.end_x));
-    game_state->tone_hz = 256 + (int)(128.0f * (input0.end_y));
-  } else {
-  }
-  // input.Abutton_ended_down;
-  // input.Abutton_half_transition_count;
-  // char debug_buffer[128];
-  // sprintf_s(debug_buffer, sizeof(debug_buffer), "down.ended_down = %d\n",
-  //           input0.down.ended_down);
-  // OutputDebugStringA(debug_buffer);
+    if (controller->action_down.ended_down) {
+      game_state->green_offset += 1;
+    }
+    if (controller->action_down.ended_down) {
 
-  if (input0.down.ended_down) {
-    game_state->green_offset += 1;
-  }
-  if (input0.down.ended_down) {
-
-    game_state->green_offset += 1;
+      game_state->green_offset += 1;
+    }
   }
 
   // TODO Allow sample offsets for more robust platform options
