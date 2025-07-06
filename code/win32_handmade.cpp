@@ -28,6 +28,9 @@
 #include <intrin.h>
 #include <memoryapi.h>
 #include <minwindef.h>
+#include <profileapi.h>
+#include <synchapi.h>
+#include <timeapi.h>
 #include <winnt.h>
 #include <winrt/Windows.Foundation.Collections.h>
 #include <winuser.h>
@@ -474,8 +477,26 @@ internal void win32_fill_sound_buffer(Win32_Sound_Output *sound_output,
   }
 }
 
+global_variable int64 pref_count_frequency;
+
+inline LARGE_INTEGER win32_get_wall_clock() {
+  LARGE_INTEGER result;
+  QueryPerformanceCounter(&result);
+  return result;
+}
+
+inline real32 win32_get_seconds_elapsed(LARGE_INTEGER start,
+                                        LARGE_INTEGER end) {
+  real32 result =
+      ((real32)(end.QuadPart - start.QuadPart) / (real32)pref_count_frequency);
+  return result;
+}
+
 int WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine,
             int nShowCmd) {
+  UINT desired_scheduler = 1;
+  bool32 sleep_is_granular =
+      (timeBeginPeriod(desired_scheduler) == TIMERR_NOERROR);
   win32_load_xinput();
   WNDCLASSEX window_class{};
 
@@ -486,10 +507,14 @@ int WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine,
   window_class.hInstance = hInstance;
   // window_class.hIcon;
   window_class.lpszClassName = "HandmadeHeroWindowClass";
+  // TODO: how to query this in windows
+  int monitor_refresh_hz = 60;
+  int game_update_hz = monitor_refresh_hz / 2;
+  real32 target_seconds_per_frame = 1.0f / (real32)monitor_refresh_hz;
 
   LARGE_INTEGER pref_count_frequency_result;
   QueryPerformanceFrequency(&pref_count_frequency_result);
-  int64 pref_count_frequency = pref_count_frequency_result.QuadPart;
+  pref_count_frequency = pref_count_frequency_result.QuadPart;
 
   if (RegisterClassEx(&window_class)) {
     HWND window_handle = CreateWindowEx(
@@ -540,8 +565,7 @@ int WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine,
         GameInput *new_input = &input[0];
         GameInput *old_input = &input[1];
 
-        LARGE_INTEGER last_counter;
-        QueryPerformanceCounter(&last_counter);
+        LARGE_INTEGER last_counter = win32_get_wall_clock();
         uint64 last_cycle_count = __rdtsc();
         while (GLOBALRUNNING) {
           GameControllerInput *old_keyboard_controller =
@@ -702,6 +726,31 @@ int WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine,
           }
 
           HDC device_context = GetDC(window_handle);
+
+          uint64 end_cycle_count = __rdtsc();
+          LARGE_INTEGER work_counter = win32_get_wall_clock();
+          uint64 cycle_elapsed = end_cycle_count - last_cycle_count;
+          int64 counter_elapsed = work_counter.QuadPart - last_counter.QuadPart;
+          real32 work_seconds_elapsed =
+              win32_get_seconds_elapsed(last_counter, work_counter);
+          real32 seconds_elapsed_for_frame = work_seconds_elapsed;
+
+          if (seconds_elapsed_for_frame < target_seconds_per_frame) {
+
+            while (seconds_elapsed_for_frame < target_seconds_per_frame) {
+
+              if (sleep_is_granular) {
+                DWORD sleep_ms = (DWORD)(1000.0f * (target_seconds_per_frame -
+                                                    seconds_elapsed_for_frame));
+                Sleep(sleep_ms);
+              }
+              seconds_elapsed_for_frame = win32_get_seconds_elapsed(
+                  last_counter, win32_get_wall_clock());
+            }
+          } else {
+            // TODO: missed frame rate target
+            // TODO: logging
+          }
           Win32WindowDimension dimension =
               win32_get_window_dimension(window_handle);
 
@@ -709,24 +758,25 @@ int WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine,
                                      &global_back_buffer, 0, 0, dimension.Width,
                                      dimension.Height);
           ReleaseDC(window_handle, device_context);
-          uint64 end_cycle_count = __rdtsc();
-          LARGE_INTEGER end_counter;
-          QueryPerformanceCounter(&end_counter);
-          uint64 cycle_elapsed = end_cycle_count - last_cycle_count;
-          int64 counter_elapsed = end_counter.QuadPart - last_counter.QuadPart;
-          real32 ms_per_frame = (real32)(((real32)counter_elapsed * 1000.0f) /
-                                         pref_count_frequency);
-          real32 fps = (real32)pref_count_frequency / (real32)counter_elapsed;
+          LARGE_INTEGER end_counter2 = win32_get_wall_clock();
+          real32 ms_per_frame =
+              1000.0f * win32_get_seconds_elapsed(last_counter, end_counter2);
+          // real32 fps = (real32)pref_count_frequency_result /
+          // (real32)counter_elapsed;
           real32 mcpf = (real32)((real32)cycle_elapsed / (1000.0f * 1000.0f));
 #if 0
         // use this part for debug
         char buffer[256];
-        sprintf_s(buffer,sizeof(buffer) ,"%fms/f / %fFPS/s %fmc/f \n", ms_per_frame, fps, mcpf);
+        sprintf_s(buffer,sizeof(buffer) ,"%fms/f / %fFPS/s %fmc/f \n", ms_per_frame, mcpf);
         OutputDebugStringA(buffer);
         //
 #endif
+          LARGE_INTEGER end_counter = win32_get_wall_clock();
           last_counter = end_counter;
-          last_cycle_count = end_cycle_count;
+
+          uint64 end_cycle_count2 = __rdtsc();
+          uint64 cycles_elapsed = end_cycle_count2 - last_cycle_count;
+          last_cycle_count = end_cycle_count2;
 
           GameInput *temp = new_input;
           new_input = old_input;

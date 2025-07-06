@@ -57,4 +57,5 @@ target_link_libraries(handmade
     kernel32
     shell32
     ole32
+    Winmm
 )
