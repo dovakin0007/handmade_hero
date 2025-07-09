@@ -1,5 +1,6 @@
 #pragma once
 
+#include <minwindef.h>
 #include <wingdi.h>
 
 struct Win32OffscreenBuffer {
@@ -21,5 +22,10 @@ struct Win32_Sound_Output {
   int latency_sample_count;
   uint32 running_sample_index;
   int bytes_per_sample;
-  int secondary_buffer_size;
+  DWORD secondary_buffer_size;
+};
+
+struct Win32DebugTimeMarker {
+  DWORD play_cursor;
+  DWORD write_cursor;
 };

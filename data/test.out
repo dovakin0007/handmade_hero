@@ -81,11 +81,6 @@ void game_update_and_render(GameMemory *memory, GameInput *input,
         game_state->blue_offset += 1;
       }
     }
-    char debug_buffer[128];
-    sprintf_s(debug_buffer, sizeof(debug_buffer), "down.ended_down = %d\n",
-              controller->action_down.ended_down);
-    OutputDebugStringA(debug_buffer);
-
     if (controller->action_down.ended_down) {
       game_state->green_offset += 1;
     }
