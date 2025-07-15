@@ -1,9 +1,14 @@
 #pragma once
+/* ========================================================================
+   $File: $
+   $Date: $
+   $Revision: $
+   $Creator: Casey Muratori $
+   $Notice: (C) Copyright 2014 by Molly Rocket, Inc. All Rights Reserved. $
+   ======================================================================== */
 
-#include <minwindef.h>
-#include <wingdi.h>
-
-struct Win32OffscreenBuffer {
+struct win32_offscreen_buffer {
+  // NOTE(casey): Pixels are alwasy 32-bits wide, Memory Order BB GG RR XX
   BITMAPINFO Info;
   void *Memory;
   int Width;
@@ -12,20 +17,32 @@ struct Win32OffscreenBuffer {
   int BytesPerPixel;
 };
 
-struct Win32WindowDimension {
+struct win32_window_dimension {
   int Width;
   int Height;
 };
 
-struct Win32_Sound_Output {
-  int samples_per_second;
-  int latency_sample_count;
-  uint32 running_sample_index;
-  int bytes_per_sample;
-  DWORD secondary_buffer_size;
+struct win32_sound_output {
+  int SamplesPerSecond;
+  uint32 RunningSampleIndex;
+  int BytesPerSample;
+  DWORD SecondaryBufferSize;
+  DWORD SafetyBytes;
+  real32 tSine;
+  int LatencySampleCount;
+  // TODO(casey): Should running sample index be in bytes as well
+  // TODO(casey): Math gets simpler if we add a "bytes per second" field?
 };
 
-struct Win32DebugTimeMarker {
-  DWORD play_cursor;
-  DWORD write_cursor;
+struct win32_debug_time_marker {
+  DWORD OutputPlayCursor;
+  DWORD OutputWriteCursor;
+  DWORD OutputLocation;
+  DWORD OutputByteCount;
+  DWORD ExpectedFlipPlayCursor;
+
+  DWORD FlipPlayCursor;
+  DWORD FlipWriteCursor;
 };
+
+#define WIN32_HANDMADE_H

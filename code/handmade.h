@@ -1,136 +1,150 @@
 #pragma once
 
-#include <cstdint>
-
-#define internal static
-#define local_persist static
-#define global_variable static
-
-/*
-    NOTE:
-    HANDMADE_INTERNAL:
-    0 - build for public release
-    1 - build for developer only
-
-    HANDMADE_SLOW:
-    0 - No Slow code allowed!
-    1 - Slow code allowed!
-*/
-#if HANDMADE_INTERNAL
-/*
-    These are not for doing anything in relase version - they are
-    blocking and the write doesn't protect against lost data
-*/
-struct DebugReadFileResult {
-  uint32 content_size;
-  void *contents;
-};
-internal DebugReadFileResult debug_platform_read_entire_file(char *file_name);
-internal void debug_platform_free_file_memory(void *memory);
-internal bool32 debug_platform_write_entire_file(char *file_name, void *memory,
-                                                 uint32 memory_size);
-#endif
-
 #if HANDMADE_SLOW
-#define Assert(expression)                                                     \
-  if (!(expression)) {                                                         \
+// TODO: Complete assertion macro - don't worry everyone!
+#define Assert(Expression)                                                     \
+  if (!(Expression)) {                                                         \
     *(int *)0 = 0;                                                             \
   }
 #else
-#define Assert(expression)
+#define Assert(Expression)
 #endif
 
+#define Kilobytes(Value) ((Value) * 1024LL)
+#define Megabytes(Value) (Kilobytes(Value) * 1024LL)
+#define Gigabytes(Value) (Megabytes(Value) * 1024LL)
+#define Terabytes(Value) (Gigabytes(Value) * 1024LL)
+
 #define ArrayCount(Array) (sizeof(Array) / sizeof((Array)[0]))
+// TODO: swap, min, max ... macros???
 
-#define Kilobytes(x) ((x) * 1024)
-#define Megabytes(x) (Kilobytes(x) * 1024)
-#define Gigabytes(x) (Megabytes(x) * 1024)
-#define Terabytes(x) (Gigabytes(x) * 1024)
+inline uint32 SafeTruncateUInt64(uint64 Value) {
+  // TODO: Defines for maximum values
+  Assert(Value <= 0xFFFFFFFF);
+  uint32 Result = (uint32)Value;
+  return (Result);
+}
 
-inline uint32 safe_truncate_uint64(uint64 value) {
-  Assert(value < 0xFFFFFFFF);
-  uint32 value32 = (uint32)value;
-  return value32;
+/*
+  NOTE: Services that the platform layer provides to the game
+*/
+#if HANDMADE_INTERNAL
+/* IMPORTANT:
+
+   These are NOT for doing anything in the shipping game - they are
+   blocking and the write doesn't protect against lost data!
+*/
+struct debug_read_file_result {
+  uint32 ContentsSize;
+  void *Contents;
 };
+internal debug_read_file_result DEBUGPlatformReadEntireFile(char *Filename);
+internal void DEBUGPlatformFreeFileMemory(void *Memory);
+internal bool32 DEBUGPlatformWriteEntireFile(char *Filename, uint32 MemorySize,
+                                             void *Memory);
+#endif
 
-struct GameSoundOutputBuffer {
-  int samples_per_second;
-  int sample_count;
-  int16 *samples;
-};
+/*
+  NOTE: Services that the game provides to the platform layer.
+  (this may expand in the future - sound on separate thread, etc.)
+*/
 
-struct GameOffscreenBuffer {
+// FOUR THINGS - timing, controller/keyboard input, bitmap buffer to use, sound
+// buffer to use
+
+// TODO: In the future, rendering _specifically_ will become a
+// three-tiered abstraction!!!
+struct game_offscreen_buffer {
+  // NOTE: Pixels are alwasy 32-bits wide, Memory Order BB GG RR XX
   void *Memory;
   int Width;
   int Height;
   int Pitch;
-  int BytesPerPixel;
 };
 
-struct GameButtonState {
-  int half_transition_count;
-  bool32 ended_down;
+struct game_sound_output_buffer {
+  int SamplesPerSecond;
+  int SampleCount;
+  int16 *Samples;
 };
 
-struct GameControllerInput {
-  bool32 is_connected;
-  bool32 is_analog;
-  real32 stick_average_x;
-  real32 stick_average_y;
+struct game_button_state {
+  int HalfTransitionCount;
+  bool32 EndedDown;
+};
+
+struct game_controller_input {
+  bool32 IsConnected;
+  bool32 IsAnalog;
+  real32 StickAverageX;
+  real32 StickAverageY;
 
   union {
-    GameButtonState buttons[10];
+    game_button_state Buttons[12];
     struct {
-      GameButtonState move_up;
-      GameButtonState move_down;
-      GameButtonState move_left;
-      GameButtonState move_right;
+      game_button_state MoveUp;
+      game_button_state MoveDown;
+      game_button_state MoveLeft;
+      game_button_state MoveRight;
 
-      GameButtonState action_up;
-      GameButtonState action_down;
-      GameButtonState action_left;
-      GameButtonState action_right;
+      game_button_state ActionUp;
+      game_button_state ActionDown;
+      game_button_state ActionLeft;
+      game_button_state ActionRight;
 
-      GameButtonState left_shoulder;
-      GameButtonState right_shoulder;
+      game_button_state LeftShoulder;
+      game_button_state RightShoulder;
 
-      GameButtonState start;
-      GameButtonState back;
+      game_button_state Back;
+      game_button_state Start;
+
+      // NOTE: All buttons must be added above this line
+
+      game_button_state Terminator;
     };
   };
 };
-struct GameInput {
-  GameControllerInput controllers[5];
-};
 
-inline GameControllerInput *get_controller(GameInput *input,
-                                           int controller_idx) {
-  Assert(controller_idx < ArrayCount(input->controllers));
-  GameControllerInput *result = &input->controllers[controller_idx];
-  return result;
+struct game_input {
+  // TODO: Insert clock values here.
+  game_controller_input Controllers[5];
+};
+inline game_controller_input *GetController(game_input *Input,
+                                            int unsigned ControllerIndex) {
+  Assert(ControllerIndex < ArrayCount(Input->Controllers));
+
+  game_controller_input *Result = &Input->Controllers[ControllerIndex];
+  return (Result);
 }
 
-struct GameMemory {
-  bool32 is_initialized;
-  uint64 permanent_storage_space;
-  void *permanent_storage; // NOTE: REQUIRED to be cleared to zero at startup
+struct game_memory {
+  bool32 IsInitialized;
 
-  uint64 transient_storage_space;
-  void *transient_storage;
+  uint64 PermanentStorageSize;
+  void *PermanentStorage; // NOTE: REQUIRED to be cleared to zero at
+                          // startup
+
+  uint64 TransientStorageSize;
+  void *TransientStorage; // NOTE: REQUIRED to be cleared to zero at
+                          // startup
 };
 
-// Three things - timing, controller/keyboard input, bitmap buffer to use, sound
-// buffer to use
-internal void game_update_and_render(GameMemory *memory, GameInput *input,
-                                     GameOffscreenBuffer *buffer,
-                                     GameSoundOutputBuffer *sound_buffer);
+internal void GameUpdateAndRender(game_memory *Memory, game_input *Input,
+                                  game_offscreen_buffer *Buffer);
 
-struct GameState {
-  int tone_hz;
-  int green_offset;
-  int blue_offset;
-};
+// NOTE: At the moment, this has to be a very fast function, it cannot be
+// more than a millisecond or so.
+// TODO: Reduce the pressure on this function's performance by measuring
+// it or asking about it, etc.
+internal void GameGetSoundSamples(game_memory *Memory,
+                                  game_sound_output_buffer *SoundBuffer);
 
-struct GameClocks {
-  real32 seconds_elapsed;
+//
+//
+//
+
+struct game_state {
+  int ToneHz;
+  int GreenOffset;
+  int BlueOffset;
 };

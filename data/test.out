@@ -46,8 +46,7 @@ internal void game_output_sound(GameSoundOutputBuffer *sound_buffer,
 }
 
 void game_update_and_render(GameMemory *memory, GameInput *input,
-                            GameOffscreenBuffer *buffer,
-                            GameSoundOutputBuffer *sound_buffer) {
+                            GameOffscreenBuffer *buffer) {
   Assert(sizeof(GameState) <= memory->permanent_storage_space);
   GameState *game_state = (GameState *)memory->permanent_storage;
   if (!memory->is_initialized) {
@@ -91,7 +90,13 @@ void game_update_and_render(GameMemory *memory, GameInput *input,
   }
 
   // TODO Allow sample offsets for more robust platform options
-  game_output_sound(sound_buffer, game_state->tone_hz);
+
   RenderWeirdGradient(buffer, game_state->blue_offset,
                       game_state->green_offset);
+}
+
+void game_get_sound_samples(GameMemory *memory,
+                            GameSoundOutputBuffer *sound_buffer) {
+  GameState *game_state = (GameState *)memory->permanent_storage;
+  game_output_sound(sound_buffer, game_state->tone_hz);
 }
