@@ -1,5 +1,5 @@
 @echo off
-setlocal
+setlocal enabledelayedexpansion
 
 :: Default to Debug if no argument is provided
 set "BUILD_TYPE=%1"
@@ -11,7 +11,7 @@ echo ==================================================
 echo Building configuration: %BUILD_TYPE%
 echo ==================================================
 
-:: Remove build directory if it exists (full cleanup)
+:: Remove build directory if it exists
 if exist build (
     echo Removing existing build directory...
     rmdir /s /q build
@@ -21,21 +21,27 @@ if exist build (
 mkdir build
 cd build
 
-:: Set HANDMADE_SLOW and HANDMADE_INTERNAL for Debug builds
-set "EXTRA_DEFINES="
+:: Prepare extra CMake flags for Debug builds
+set "EXTRA_CMAKE_FLAGS="
 if /I "%BUILD_TYPE%"=="Debug" (
-    set "EXTRA_DEFINES=-DHANDMADE_SLOW=1 -DHANDMADE_INTERNAL=1"
+    set "EXTRA_CMAKE_FLAGS=-DHANDMADE_SLOW=1 -DHANDMADE_INTERNAL=1"
 )
 
-:: Configure with CMake
+:: Run CMake configuration
 echo Configuring CMake...
-cmake .. -DCMAKE_BUILD_TYPE=%BUILD_TYPE% %EXTRA_DEFINES%
-if errorlevel 1 exit /b 1
+cmake .. -DCMAKE_BUILD_TYPE=%BUILD_TYPE% !EXTRA_CMAKE_FLAGS!
+if errorlevel 1 (
+    echo CMake configuration failed.
+    exit /b 1
+)
 
 :: Build the project
 echo Building project...
 cmake --build . --config %BUILD_TYPE%
-if errorlevel 1 exit /b 1
+if errorlevel 1 (
+    echo Build failed.
+    exit /b 1
+)
 
 echo ==================================================
 echo Build completed successfully!

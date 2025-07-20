@@ -1,5 +1,5 @@
 /*
-  TODO(casey):  THIS IS NOT A FINAL PLATFORM LAYER!!!
+  TODO:  THIS IS NOT A FINAL PLATFORM LAYER!!!
 
   - Saved game locations
   - Getting a handle to our own executable file
@@ -19,49 +19,28 @@
   Just a partial list of stuff!!
 */
 
-// TODO(casey): Implement sine ourselves
-#include <math.h>
-#include <stdint.h>
-
-#define internal static
-#define local_persist static
-#define global_variable static
-
-#define Pi32 3.14159265359f
-
-typedef int8_t int8;
-typedef int16_t int16;
-typedef int32_t int32;
-typedef int64_t int64;
-typedef int32 bool32;
-
-typedef uint8_t uint8;
-typedef uint16_t uint16;
-typedef uint32_t uint32;
-typedef uint64_t uint64;
-
-typedef float real32;
-typedef double real64;
-
-#include "handmade.cpp"
+// TODO: Implement sine ourselves
 #include "handmade.h"
 
 #include <dsound.h>
+#include <libloaderapi.h>
 #include <malloc.h>
+#include <minwindef.h>
 #include <stdio.h>
+#include <winbase.h>
 #include <windows.h>
 #include <xinput.h>
 
 #include "win32_handmade.h"
 
-// TODO(casey): This is a global for now.
+// TODO: This is a global for now.
 global_variable bool32 GlobalRunning;
 global_variable bool32 GlobalPause;
 global_variable win32_offscreen_buffer GlobalBackbuffer;
 global_variable LPDIRECTSOUNDBUFFER GlobalSecondaryBuffer;
 global_variable int64 GlobalPerfCountFrequency;
 
-// NOTE(casey): XInputGetState
+// NOTE: XInputGetState
 #define X_INPUT_GET_STATE(name)                                                \
   DWORD WINAPI name(DWORD dwUserIndex, XINPUT_STATE *pState)
 typedef X_INPUT_GET_STATE(x_input_get_state);
@@ -69,7 +48,7 @@ X_INPUT_GET_STATE(XInputGetStateStub) { return (ERROR_DEVICE_NOT_CONNECTED); }
 global_variable x_input_get_state *XInputGetState_ = XInputGetStateStub;
 #define XInputGetState XInputGetState_
 
-// NOTE(casey): XInputSetState
+// NOTE: XInputSetState
 #define X_INPUT_SET_STATE(name)                                                \
   DWORD WINAPI name(DWORD dwUserIndex, XINPUT_VIBRATION *pVibration)
 typedef X_INPUT_SET_STATE(x_input_set_state);
@@ -82,7 +61,13 @@ global_variable x_input_set_state *XInputSetState_ = XInputSetStateStub;
                       LPUNKNOWN pUnkOuter)
 typedef DIRECT_SOUND_CREATE(direct_sound_create);
 
-internal debug_read_file_result DEBUGPlatformReadEntireFile(char *Filename) {
+DEBUG_PLATFORM_FREE_FILE_MEMORY(DEBUGPlatformFreeFileMemory) {
+  if (Memory) {
+    VirtualFree(Memory, 0, MEM_RELEASE);
+  }
+}
+
+DEBUG_PLATFORM_READ_ENTIRE_FILE(DEBUGPlatformReadEntireFile) {
   debug_read_file_result Result = {};
 
   HANDLE FileHandle = CreateFileA(Filename, GENERIC_READ, FILE_SHARE_READ, 0,
@@ -97,36 +82,29 @@ internal debug_read_file_result DEBUGPlatformReadEntireFile(char *Filename) {
         DWORD BytesRead;
         if (ReadFile(FileHandle, Result.Contents, FileSize32, &BytesRead, 0) &&
             (FileSize32 == BytesRead)) {
-          // NOTE(casey): File read successfully
+          // NOTE: File read successfully
           Result.ContentsSize = FileSize32;
         } else {
-          // TODO(casey): Logging
+          // TODO: Logging
           DEBUGPlatformFreeFileMemory(Result.Contents);
           Result.Contents = 0;
         }
       } else {
-        // TODO(casey): Logging
+        // TODO: Logging
       }
     } else {
-      // TODO(casey): Logging
+      // TODO: Logging
     }
 
     CloseHandle(FileHandle);
   } else {
-    // TODO(casey): Logging
+    // TODO: Logging
   }
 
   return (Result);
 }
 
-internal void DEBUGPlatformFreeFileMemory(void *Memory) {
-  if (Memory) {
-    VirtualFree(Memory, 0, MEM_RELEASE);
-  }
-}
-
-internal bool32 DEBUGPlatformWriteEntireFile(char *Filename, uint32 MemorySize,
-                                             void *Memory) {
+DEBUG_PLATFORM_WRITE_ENTIRE_FILE(DEBUGPlatformWriteEntireFile) {
   bool32 Result = false;
 
   HANDLE FileHandle =
@@ -134,30 +112,68 @@ internal bool32 DEBUGPlatformWriteEntireFile(char *Filename, uint32 MemorySize,
   if (FileHandle != INVALID_HANDLE_VALUE) {
     DWORD BytesWritten;
     if (WriteFile(FileHandle, Memory, MemorySize, &BytesWritten, 0)) {
-      // NOTE(casey): File read successfully
+      // NOTE: File read successfully
       Result = (BytesWritten == MemorySize);
     } else {
-      // TODO(casey): Logging
+      // TODO: Logging
     }
 
     CloseHandle(FileHandle);
   } else {
-    // TODO(casey): Logging
+    // TODO: Logging
   }
 
   return (Result);
 }
 
+struct win32_game_code {
+  HMODULE GameCodeDLL;
+  game_update_and_render *UpdateAndRender;
+  game_get_sound_samples *GetSoundSamples;
+  bool32 IsValid;
+};
+
+internal win32_game_code Win32LoadGameCode(void) {
+  win32_game_code Result = {};
+  CopyFile("handmade.exe", "handmade_temp.dll", FALSE);
+  Result.UpdateAndRender = GameUpdateAndRenderStub;
+  Result.GetSoundSamples = GameGetSoundSamplesStub;
+  Result.GameCodeDLL = LoadLibraryA("handmade_temp.dll");
+  if (Result.GameCodeDLL) {
+    Result.UpdateAndRender = (game_update_and_render *)GetProcAddress(
+        Result.GameCodeDLL, "GameUpdateAndRender");
+    Result.GetSoundSamples = (game_get_sound_samples *)GetProcAddress(
+        Result.GameCodeDLL, "GameGetSoundSamples");
+    Result.IsValid = (Result.GetSoundSamples && Result.UpdateAndRender);
+  }
+
+  if (!Result.IsValid) {
+    Result.UpdateAndRender = GameUpdateAndRenderStub;
+    Result.GetSoundSamples = GameGetSoundSamplesStub;
+  }
+  return (Result);
+}
+
+internal void Win32UnloadGameCode(win32_game_code *GameCode) {
+  if (GameCode->GameCodeDLL) {
+    FreeLibrary(GameCode->GameCodeDLL);
+    GameCode->GameCodeDLL = 0;
+  }
+  GameCode->IsValid = false;
+  GameCode->UpdateAndRender = GameUpdateAndRenderStub;
+  GameCode->GetSoundSamples = GameGetSoundSamplesStub;
+}
+
 internal void Win32LoadXInput(void) {
-  // TODO(casey): Test this on Windows 8
+  // TODO: Test this on Windows 8
   HMODULE XInputLibrary = LoadLibraryA("xinput1_4.dll");
   if (!XInputLibrary) {
-    // TODO(casey): Diagnostic
+    // TODO: Diagnostic
     XInputLibrary = LoadLibraryA("xinput9_1_0.dll");
   }
 
   if (!XInputLibrary) {
-    // TODO(casey): Diagnostic
+    // TODO: Diagnostic
     XInputLibrary = LoadLibraryA("xinput1_3.dll");
   }
 
@@ -174,24 +190,24 @@ internal void Win32LoadXInput(void) {
       XInputSetState = XInputSetStateStub;
     }
 
-    // TODO(casey): Diagnostic
+    // TODO: Diagnostic
 
   } else {
-    // TODO(casey): Diagnostic
+    // TODO: Diagnostic
   }
 }
 
 internal void Win32InitDSound(HWND Window, int32 SamplesPerSecond,
                               int32 BufferSize) {
-  // NOTE(casey): Load the library
+  // NOTE: Load the library
   HMODULE DSoundLibrary = LoadLibraryA("dsound.dll");
   if (DSoundLibrary) {
-    // NOTE(casey): Get a DirectSound object! - cooperative
+    // NOTE: Get a DirectSound object! - cooperative
     direct_sound_create *DirectSoundCreate =
         (direct_sound_create *)GetProcAddress(DSoundLibrary,
                                               "DirectSoundCreate");
 
-    // TODO(casey): Double-check that this works on XP - DirectSound8 or 7??
+    // TODO: Double-check that this works on XP - DirectSound8 or 7??
     LPDIRECTSOUND DirectSound;
     if (DirectSoundCreate && SUCCEEDED(DirectSoundCreate(0, &DirectSound, 0))) {
       WAVEFORMATEX WaveFormat = {};
@@ -210,26 +226,26 @@ internal void Win32InitDSound(HWND Window, int32 SamplesPerSecond,
         BufferDescription.dwSize = sizeof(BufferDescription);
         BufferDescription.dwFlags = DSBCAPS_PRIMARYBUFFER;
 
-        // NOTE(casey): "Create" a primary buffer
-        // TODO(casey): DSBCAPS_GLOBALFOCUS?
+        // NOTE: "Create" a primary buffer
+        // TODO: DSBCAPS_GLOBALFOCUS?
         LPDIRECTSOUNDBUFFER PrimaryBuffer;
         if (SUCCEEDED(DirectSound->CreateSoundBuffer(&BufferDescription,
                                                      &PrimaryBuffer, 0))) {
           HRESULT Error = PrimaryBuffer->SetFormat(&WaveFormat);
           if (SUCCEEDED(Error)) {
-            // NOTE(casey): We have finally set the format!
+            // NOTE: We have finally set the format!
             OutputDebugStringA("Primary buffer format was set.\n");
           } else {
-            // TODO(casey): Diagnostic
+            // TODO: Diagnostic
           }
         } else {
-          // TODO(casey): Diagnostic
+          // TODO: Diagnostic
         }
       } else {
-        // TODO(casey): Diagnostic
+        // TODO: Diagnostic
       }
 
-      // TODO(casey): DSBCAPS_GETCURRENTPOSITION2
+      // TODO: DSBCAPS_GETCURRENTPOSITION2
       DSBUFFERDESC BufferDescription = {};
       BufferDescription.dwSize = sizeof(BufferDescription);
       BufferDescription.dwFlags = DSBCAPS_GETCURRENTPOSITION2;
@@ -241,10 +257,10 @@ internal void Win32InitDSound(HWND Window, int32 SamplesPerSecond,
         OutputDebugStringA("Secondary buffer created successfully.\n");
       }
     } else {
-      // TODO(casey): Diagnostic
+      // TODO: Diagnostic
     }
   } else {
-    // TODO(casey): Diagnostic
+    // TODO: Diagnostic
   }
 }
 
@@ -261,7 +277,7 @@ internal win32_window_dimension Win32GetWindowDimension(HWND Window) {
 
 internal void Win32ResizeDIBSection(win32_offscreen_buffer *Buffer, int Width,
                                     int Height) {
-  // TODO(casey): Bulletproof this.
+  // TODO: Bulletproof this.
   // Maybe don't free first, free after, then free first if that fails.
 
   if (Buffer->Memory) {
@@ -274,7 +290,7 @@ internal void Win32ResizeDIBSection(win32_offscreen_buffer *Buffer, int Width,
   int BytesPerPixel = 4;
   Buffer->BytesPerPixel = BytesPerPixel;
 
-  // NOTE(casey): When the biHeight field is negative, this is the clue to
+  // NOTE: When the biHeight field is negative, this is the clue to
   // Windows to treat this bitmap as top-down, not bottom-up, meaning that
   // the first three bytes of the image are the color for the top left pixel
   // in the bitmap, not the bottom left!
@@ -285,7 +301,7 @@ internal void Win32ResizeDIBSection(win32_offscreen_buffer *Buffer, int Width,
   Buffer->Info.bmiHeader.biBitCount = 32;
   Buffer->Info.bmiHeader.biCompression = BI_RGB;
 
-  // NOTE(casey): Thank you to Chris Hecker of Spy Party fame
+  // NOTE: Thank you to Chris Hecker of Spy Party fame
   // for clarifying the deal with StretchDIBits and BitBlt!
   // No more DC for us.
   int BitmapMemorySize = (Buffer->Width * Buffer->Height) * BytesPerPixel;
@@ -293,14 +309,14 @@ internal void Win32ResizeDIBSection(win32_offscreen_buffer *Buffer, int Width,
                                 PAGE_READWRITE);
   Buffer->Pitch = Width * BytesPerPixel;
 
-  // TODO(casey): Probably clear this to black
+  // TODO: Probably clear this to black
 }
 
 internal void Win32DisplayBufferInWindow(win32_offscreen_buffer *Buffer,
                                          HDC DeviceContext, int WindowWidth,
                                          int WindowHeight) {
-  // TODO(casey): Aspect ratio correction
-  // TODO(casey): Play with stretch modes
+  // TODO: Aspect ratio correction
+  // TODO: Play with stretch modes
   StretchDIBits(DeviceContext,
                 /*
                 X, Y, Width, Height,
@@ -318,7 +334,7 @@ internal LRESULT CALLBACK Win32MainWindowCallback(HWND Window, UINT Message,
 
   switch (Message) {
   case WM_CLOSE: {
-    // TODO(casey): Handle this with a message to the user?
+    // TODO: Handle this with a message to the user?
     GlobalRunning = false;
   } break;
 
@@ -327,7 +343,7 @@ internal LRESULT CALLBACK Win32MainWindowCallback(HWND Window, UINT Message,
   } break;
 
   case WM_DESTROY: {
-    // TODO(casey): Handle this as an error - recreate window?
+    // TODO: Handle this as an error - recreate window?
     GlobalRunning = false;
   } break;
 
@@ -364,7 +380,7 @@ internal void Win32ClearBuffer(win32_sound_output *SoundOutput) {
   if (SUCCEEDED(GlobalSecondaryBuffer->Lock(0, SoundOutput->SecondaryBufferSize,
                                             &Region1, &Region1Size, &Region2,
                                             &Region2Size, 0))) {
-    // TODO(casey): assert that Region1Size/Region2Size is valid
+    // TODO: assert that Region1Size/Region2Size is valid
     uint8 *DestSample = (uint8 *)Region1;
     for (DWORD ByteIndex = 0; ByteIndex < Region1Size; ++ByteIndex) {
       *DestSample++ = 0;
@@ -382,7 +398,7 @@ internal void Win32ClearBuffer(win32_sound_output *SoundOutput) {
 internal void Win32FillSoundBuffer(win32_sound_output *SoundOutput,
                                    DWORD ByteToLock, DWORD BytesToWrite,
                                    game_sound_output_buffer *SourceBuffer) {
-  // TODO(casey): More strenuous test!
+  // TODO: More strenuous test!
   VOID *Region1;
   DWORD Region1Size;
   VOID *Region2;
@@ -390,9 +406,9 @@ internal void Win32FillSoundBuffer(win32_sound_output *SoundOutput,
   if (SUCCEEDED(GlobalSecondaryBuffer->Lock(ByteToLock, BytesToWrite, &Region1,
                                             &Region1Size, &Region2,
                                             &Region2Size, 0))) {
-    // TODO(casey): assert that Region1Size/Region2Size is valid
+    // TODO: assert that Region1Size/Region2Size is valid
 
-    // TODO(casey): Collapse these two loops
+    // TODO: Collapse these two loops
     DWORD Region1SampleCount = Region1Size / SoundOutput->BytesPerSample;
     int16 *DestSample = (int16 *)Region1;
     int16 *SourceSample = SourceBuffer->Samples;
@@ -629,7 +645,7 @@ int CALLBACK WinMain(HINSTANCE Instance, HINSTANCE PrevInstance,
   QueryPerformanceFrequency(&PerfCountFrequencyResult);
   GlobalPerfCountFrequency = PerfCountFrequencyResult.QuadPart;
 
-  // NOTE(casey): Set the Windows scheduler granularity to 1ms
+  // NOTE: Set the Windows scheduler granularity to 1ms
   // so that our Sleep() can be more granular.
   UINT DesiredSchedulerMS = 1;
   bool32 SleepIsGranular =
@@ -647,7 +663,7 @@ int CALLBACK WinMain(HINSTANCE Instance, HINSTANCE PrevInstance,
   //    WindowClass.hIcon;
   WindowClass.lpszClassName = "HandmadeHeroWindowClass";
 
-  // TODO(casey): How do we reliably query on this on Windows?
+  // TODO: How do we reliably query on this on Windows?
 #define MonitorRefreshHz 60
 #define GameUpdateHz (MonitorRefreshHz / 2)
   real32 TargetSecondsPerFrame = 1.0f / (real32)GameUpdateHz;
@@ -657,21 +673,21 @@ int CALLBACK WinMain(HINSTANCE Instance, HINSTANCE PrevInstance,
                                   CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT,
                                   CW_USEDEFAULT, 0, 0, Instance, 0);
     if (Window) {
-      // NOTE(casey): Since we specified CS_OWNDC, we can just
+      // NOTE: Since we specified CS_OWNDC, we can just
       // get one device context and use it forever because we
       // are not sharing it with anyone.
       HDC DeviceContext = GetDC(Window);
       win32_sound_output SoundOutput = {};
 
-      // TODO(casey): Make this like sixty seconds?
+      // TODO: Make this like sixty seconds?
       SoundOutput.SamplesPerSecond = 48000;
       SoundOutput.BytesPerSample = sizeof(int16) * 2;
       SoundOutput.SecondaryBufferSize =
           SoundOutput.SamplesPerSecond * SoundOutput.BytesPerSample;
-      // TODO(casey): Get rid of LatencySampleCount
+      // TODO: Get rid of LatencySampleCount
       SoundOutput.LatencySampleCount =
           3 * (SoundOutput.SamplesPerSecond / GameUpdateHz);
-      // TODO(casey): Actually compute this variance and see
+      // TODO: Actually compute this variance and see
       // what the lowest reasonable value is.
       SoundOutput.SafetyBytes = (SoundOutput.SamplesPerSecond *
                                  SoundOutput.BytesPerSample / GameUpdateHz) /
@@ -684,7 +700,7 @@ int CALLBACK WinMain(HINSTANCE Instance, HINSTANCE PrevInstance,
       GlobalRunning = true;
 
 #if 0
-            // NOTE(casey): This tests the PlayCursor/WriteCursor update frequency
+            // NOTE: This tests the PlayCursor/WriteCursor update frequency
             // On the Handmade Hero machine, it was 480 samples.
             while(GlobalRunning)
             {
@@ -699,7 +715,7 @@ int CALLBACK WinMain(HINSTANCE Instance, HINSTANCE PrevInstance,
             }
 #endif
 
-      // TODO(casey): Pool with bitmap VirtualAlloc
+      // TODO: Pool with bitmap VirtualAlloc
       int16 *Samples =
           (int16 *)VirtualAlloc(0, SoundOutput.SecondaryBufferSize,
                                 MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
@@ -713,8 +729,11 @@ int CALLBACK WinMain(HINSTANCE Instance, HINSTANCE PrevInstance,
       game_memory GameMemory = {};
       GameMemory.PermanentStorageSize = Megabytes(64);
       GameMemory.TransientStorageSize = Gigabytes(1);
+      GameMemory.DEBUGPlatformReadEntireFile = DEBUGPlatformReadEntireFile;
+      GameMemory.DEBUGPlatformFreeFileMemory = DEBUGPlatformFreeFileMemory;
+      GameMemory.DEBUGPlatformWriteEntireFile = DEBUGPlatformWriteEntireFile;
 
-      // TODO(casey): Handle various memory footprints (USING SYSTEM METRICS)
+      // TODO: Handle various memory footprints (USING SYSTEM METRICS)
       uint64 TotalSize =
           GameMemory.PermanentStorageSize + GameMemory.TransientStorageSize;
       GameMemory.PermanentStorage =
@@ -739,10 +758,18 @@ int CALLBACK WinMain(HINSTANCE Instance, HINSTANCE PrevInstance,
         real32 AudioLatencySeconds = 0;
         bool32 SoundIsValid = false;
 
+        win32_game_code Game = Win32LoadGameCode();
+        uint32 LoadCounter = 0;
         uint64 LastCycleCount = __rdtsc();
         while (GlobalRunning) {
-          // TODO(casey): Zeroing macro
-          // TODO(casey): We can't zero everything because the up/down state
+          if (LoadCounter++ < 120) {
+            Win32UnloadGameCode(&Game);
+            Game = Win32LoadGameCode();
+            LoadCounter = 0;
+          }
+
+          // TODO: Zeroing macro
+          // TODO: We can't zero everything because the up/down state
           // will be wrong!!!
           game_controller_input *OldKeyboardController =
               GetController(OldInput, 0);
@@ -760,9 +787,9 @@ int CALLBACK WinMain(HINSTANCE Instance, HINSTANCE PrevInstance,
           Win32ProcessPendingMessages(NewKeyboardController);
 
           if (!GlobalPause) {
-            // TODO(casey): Need to not poll disconnected controllers to avoid
+            // TODO: Need to not poll disconnected controllers to avoid
             // xinput frame rate hit on older libraries...
-            // TODO(casey): Should we poll this more frequently
+            // TODO: Should we poll this more frequently
             DWORD MaxControllerCount = XUSER_MAX_COUNT;
             if (MaxControllerCount > (ArrayCount(NewInput->Controllers) - 1)) {
               MaxControllerCount = (ArrayCount(NewInput->Controllers) - 1);
@@ -781,12 +808,12 @@ int CALLBACK WinMain(HINSTANCE Instance, HINSTANCE PrevInstance,
                   ERROR_SUCCESS) {
                 NewController->IsConnected = true;
 
-                // NOTE(casey): This controller is plugged in
-                // TODO(casey): See if ControllerState.dwPacketNumber increments
+                // NOTE: This controller is plugged in
+                // TODO: See if ControllerState.dwPacketNumber increments
                 // too rapidly
                 XINPUT_GAMEPAD *Pad = &ControllerState.Gamepad;
 
-                // TODO(casey): This is a square deadzone, check XInput to
+                // TODO: This is a square deadzone, check XInput to
                 // verify that the deadzone is "round" and show how to do
                 // round deadzone processing.
                 NewController->StickAverageX = Win32ProcessXInputStickValue(
@@ -859,7 +886,7 @@ int CALLBACK WinMain(HINSTANCE Instance, HINSTANCE PrevInstance,
                     Pad->wButtons, &OldController->Back, XINPUT_GAMEPAD_BACK,
                     &NewController->Back);
               } else {
-                // NOTE(casey): The controller is not available
+                // NOTE: The controller is not available
                 NewController->IsConnected = false;
               }
             }
@@ -869,7 +896,7 @@ int CALLBACK WinMain(HINSTANCE Instance, HINSTANCE PrevInstance,
             Buffer.Width = GlobalBackbuffer.Width;
             Buffer.Height = GlobalBackbuffer.Height;
             Buffer.Pitch = GlobalBackbuffer.Pitch;
-            GameUpdateAndRender(&GameMemory, NewInput, &Buffer);
+            Game.UpdateAndRender(&GameMemory, NewInput, &Buffer);
 
             LARGE_INTEGER AudioWallClock = Win32GetWallClock();
             real32 FromBeginToAudioSeconds =
@@ -879,7 +906,7 @@ int CALLBACK WinMain(HINSTANCE Instance, HINSTANCE PrevInstance,
             DWORD WriteCursor;
             if (GlobalSecondaryBuffer->GetCurrentPosition(
                     &PlayCursor, &WriteCursor) == DS_OK) {
-              /* NOTE(casey):
+              /* NOTE:
 
                  Here is how sound output computation works.
 
@@ -960,7 +987,7 @@ int CALLBACK WinMain(HINSTANCE Instance, HINSTANCE PrevInstance,
               SoundBuffer.SampleCount =
                   BytesToWrite / SoundOutput.BytesPerSample;
               SoundBuffer.Samples = Samples;
-              GameGetSoundSamples(&GameMemory, &SoundBuffer);
+              Game.GetSoundSamples(&GameMemory, &SoundBuffer);
 
 #if HANDMADE_INTERNAL
               win32_debug_time_marker *Marker =
@@ -997,7 +1024,7 @@ int CALLBACK WinMain(HINSTANCE Instance, HINSTANCE PrevInstance,
             real32 WorkSecondsElapsed =
                 Win32GetSecondsElapsed(LastCounter, WorkCounter);
 
-            // TODO(casey): NOT TESTED YET!  PROBABLY BUGGY!!!!!
+            // TODO: NOT TESTED YET!  PROBABLY BUGGY!!!!!
             real32 SecondsElapsedForFrame = WorkSecondsElapsed;
             if (SecondsElapsedForFrame < TargetSecondsPerFrame) {
               if (SleepIsGranular) {
@@ -1011,7 +1038,7 @@ int CALLBACK WinMain(HINSTANCE Instance, HINSTANCE PrevInstance,
               real32 TestSecondsElapsedForFrame =
                   Win32GetSecondsElapsed(LastCounter, Win32GetWallClock());
               if (TestSecondsElapsedForFrame < TargetSecondsPerFrame) {
-                // TODO(casey): LOG MISSED SLEEP HERE
+                // TODO: LOG MISSED SLEEP HERE
               }
 
               while (SecondsElapsedForFrame < TargetSecondsPerFrame) {
@@ -1019,8 +1046,8 @@ int CALLBACK WinMain(HINSTANCE Instance, HINSTANCE PrevInstance,
                     Win32GetSecondsElapsed(LastCounter, Win32GetWallClock());
               }
             } else {
-              // TODO(casey): MISSED FRAME RATE!
-              // TODO(casey): Logging
+              // TODO: MISSED FRAME RATE!
+              // TODO: Logging
             }
 
             LARGE_INTEGER EndCounter = Win32GetWallClock();
@@ -1030,7 +1057,7 @@ int CALLBACK WinMain(HINSTANCE Instance, HINSTANCE PrevInstance,
 
             win32_window_dimension Dimension = Win32GetWindowDimension(Window);
 #if HANDMADE_INTERNAL
-            // TODO(casey): Note, current is wrong on the zero'th index
+            // TODO: Note, current is wrong on the zero'th index
             Win32DebugSyncDisplay(&GlobalBackbuffer,
                                   ArrayCount(DebugTimeMarkers),
                                   DebugTimeMarkers, DebugTimeMarkerIndex - 1,
@@ -1041,7 +1068,7 @@ int CALLBACK WinMain(HINSTANCE Instance, HINSTANCE PrevInstance,
 
             FlipWallClock = Win32GetWallClock();
 #if HANDMADE_INTERNAL
-            // NOTE(casey): This is debug code
+            // NOTE: This is debug code
             {
               DWORD PlayCursor2;
               DWORD WriteCursor2;
@@ -1059,7 +1086,7 @@ int CALLBACK WinMain(HINSTANCE Instance, HINSTANCE PrevInstance,
             game_input *Temp = NewInput;
             NewInput = OldInput;
             OldInput = Temp;
-            // TODO(casey): Should I clear these here?
+            // TODO: Should I clear these here?
 
             uint64 EndCycleCount = __rdtsc();
             uint64 CyclesElapsed = EndCycleCount - LastCycleCount;
@@ -1081,15 +1108,16 @@ int CALLBACK WinMain(HINSTANCE Instance, HINSTANCE PrevInstance,
             }
 #endif
           }
+          Win32UnloadGameCode(&Game);
         }
       } else {
-        // TODO(casey): Logging
+        // TODO: Logging
       }
     } else {
-      // TODO(casey): Logging
+      // TODO: Logging
     }
   } else {
-    // TODO(casey): Logging
+    // TODO: Logging
   }
 
   return (0);
