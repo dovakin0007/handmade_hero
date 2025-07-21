@@ -1,9 +1,15 @@
 cmake_minimum_required(VERSION 3.10)
 project(handmade LANGUAGES CXX)
 
-# Use C++17 standard
+# ========== C++ Standard ==========
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+# ========== Timestamp for PDB Naming ==========
+string(TIMESTAMP BUILD_DATETIME "%Y%m%d_%H%M%S")
+set(PDB_DLL_NAME "handmade_dll_${BUILD_DATETIME}")
+set(PDB_EXE_NAME "handmade_exe_${BUILD_DATETIME}")
+set(MAP_FILE_NAME "${CMAKE_SOURCE_DIR}/output/$<CONFIG>/bin/handmade.map")
 
 # ========== Output Directories ==========
 foreach(CONFIG Debug Release RelWithDebInfo MinSizeRel)
@@ -25,11 +31,11 @@ set(COMMON_COMPILER_FLAGS
     /Oi         # Enable intrinsics
     /WX         # Warnings as errors
     /W4         # Warning level 4
-    /wd4201     # Disable warning: nameless struct/union
-    /wd4100     # Disable warning: unreferenced formal parameter
-    /wd4189     # Disable warning: initialized but unused variable
+    /wd4201     # Nameless struct/union
+    /wd4100     # Unreferenced parameter
+    /wd4189     # Unused variable
     /FC         # Full path in diagnostics
-    /Z7         # Debug info in .obj files
+    /Zi         # Generate external PDB (required for linker output)
 )
 
 # ========== Linker Flags ==========
@@ -39,12 +45,28 @@ set(COMMON_LINKER_FLAGS
     user32.lib
     gdi32.lib
     winmm.lib
+    Kernel32.lib
 )
 
 # ========== DLL Target ==========
 add_library(handmade SHARED
     code/handmade.cpp
-    code/handmade.def  # <-- contains export list
+    code/handmade.def
+)
+
+# DLL PDB & MAP file
+set_target_properties(handmade PROPERTIES
+    COMPILE_PDB_NAME ${PDB_DLL_NAME}
+    COMPILE_PDB_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/output/$<CONFIG>/bin"
+    PDB_NAME ${PDB_DLL_NAME}
+    PDB_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/output/$<CONFIG>/bin"
+)
+
+target_link_options(handmade PRIVATE
+    "/DEF:${CMAKE_SOURCE_DIR}/code/handmade.def"
+    "/MAP"
+    "/MAPINFO:EXPORTS"
+    "/MAP:${MAP_FILE_NAME}"
 )
 
 # ========== EXE Target ==========
@@ -52,27 +74,23 @@ add_executable(handmade_exe
     code/win32_handmade.cpp
 )
 
-# Set the subsystem to WINDOWS to use WinMain instead of main
 set_target_properties(handmade_exe PROPERTIES
     LINK_FLAGS "/SUBSYSTEM:WINDOWS"
+    COMPILE_PDB_NAME handmade_exe
+    COMPILE_PDB_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/output/$<CONFIG>/bin"
+    PDB_NAME handmade_exe
+    PDB_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/output/$<CONFIG>/bin"
 )
 
-# Link executable to the DLL import library
 target_link_libraries(handmade_exe PRIVATE handmade)
 
-# ========== Preprocessor & Flags ==========
+# ========== Preprocessor Macros & Flags ==========
 foreach(target handmade handmade_exe)
-    # Define preprocessor macros
     target_compile_definitions(${target} PRIVATE
         HANDMADE_WIN32=1
         $<$<CONFIG:Debug>:HANDMADE_INTERNAL=1>
         $<$<CONFIG:Debug>:HANDMADE_SLOW=1>
     )
-
-    # Apply MSVC flags
     target_compile_options(${target} PRIVATE ${COMMON_COMPILER_FLAGS})
     target_link_options(${target} PRIVATE ${COMMON_LINKER_FLAGS})
 endforeach()
-
-# Optional: Set subsystem to Windows XP-compatible (optional)
-# set_target_properties(handmade_exe PROPERTIES LINK_FLAGS "/SUBSYSTEM:WINDOWS,5.1")

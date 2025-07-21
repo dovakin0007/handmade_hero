@@ -7,19 +7,36 @@ if "%BUILD_TYPE%"=="" (
     set "BUILD_TYPE=Debug"
 )
 
-echo ==================================================
-echo Building configuration: %BUILD_TYPE%
-echo ==================================================
-
-:: Remove build directory if it exists
-if exist build (
-    echo Removing existing build directory...
-    rmdir /s /q build
+:: Check if "clean" was passed as a second argument
+set "CLEAN_BUILD=false"
+if /I "%2"=="clean" (
+    set "CLEAN_BUILD=true"
 )
 
-:: Recreate build directory
-mkdir build
+echo ==================================================
+echo Building configuration: %BUILD_TYPE%
+echo Clean build: %CLEAN_BUILD%
+echo ==================================================
+
+:: Remove build directory only if clean is specified
+if /I "%CLEAN_BUILD%"=="true" (
+    if exist build (
+        echo Removing existing build directory...
+        rmdir /s /q build
+    )
+)
+
+:: Recreate build directory if it doesn't exist
+if not exist build (
+    mkdir build
+)
 cd build
+
+for %%X in (pdb map) do (
+    for /r "%~dp0output" %%f in (*.%%X) do (
+        del "%%f" >nul 2>&1
+    )
+)
 
 :: Prepare extra CMake flags for Debug builds
 set "EXTRA_CMAKE_FLAGS="

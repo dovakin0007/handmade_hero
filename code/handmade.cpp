@@ -1,9 +1,10 @@
 #include "handmade.h"
 
-internal void GameOutputSound(game_sound_output_buffer *SoundBuffer,
-                              game_state *GameState) {
+internal void GameOutputSound(game_state *GameState,
+                              game_sound_output_buffer *SoundBuffer,
+                              int ToneHz) {
   int16 ToneVolume = 3000;
-  int WavePeriod = SoundBuffer->SamplesPerSecond / GameState->ToneHz;
+  int WavePeriod = SoundBuffer->SamplesPerSecond / ToneHz;
 
   int16 *SampleOut = SoundBuffer->Samples;
   for (int SampleIndex = 0; SampleIndex < SoundBuffer->SampleCount;
@@ -57,7 +58,7 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender) {
     }
 
     GameState->ToneHz = 512;
-    GameState->tSine = 0;
+    GameState->tSine = 0.0f;
 
     // TODO: This may be more appropriate to do in the platform layer
     Memory->IsInitialized = true;
@@ -93,15 +94,5 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender) {
 
 extern "C" GAME_GET_SOUND_SAMPLES(GameGetSoundSamples) {
   game_state *GameState = (game_state *)Memory->PermanentStorage;
-  GameOutputSound(SoundBuffer, GameState);
+  GameOutputSound(GameState, SoundBuffer, GameState->ToneHz);
 }
-
-#if 1
-#include <windows.h>
-BOOL WINAPI DllMain(HINSTANCE hinstDLL, // handle to DLL module
-                    DWORD fdwReason,    // reason for calling function
-                    LPVOID lpReserved) {
-
-  return (TRUE);
-}
-#endif

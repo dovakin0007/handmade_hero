@@ -1,14 +1,15 @@
 #include "handmade.h"
 
-internal void GameOutputSound(game_sound_output_buffer *SoundBuffer,
-                              game_state *GameState) {
+internal void GameOutputSound(game_state *GameState,
+                              game_sound_output_buffer *SoundBuffer,
+                              int ToneHz) {
   int16 ToneVolume = 3000;
-  int WavePeriod = SoundBuffer->SamplesPerSecond / GameState->ToneHz;
+  int WavePeriod = SoundBuffer->SamplesPerSecond / ToneHz;
 
   int16 *SampleOut = SoundBuffer->Samples;
   for (int SampleIndex = 0; SampleIndex < SoundBuffer->SampleCount;
        ++SampleIndex) {
-    // TODO: Draw this out for people
+    // TODO(casey): Draw this out for people
     real32 SineValue = sinf(GameState->tSine);
     int16 SampleValue = (int16)(SineValue * ToneVolume);
     *SampleOut++ = SampleValue;
@@ -23,7 +24,7 @@ internal void GameOutputSound(game_sound_output_buffer *SoundBuffer,
 
 internal void RenderWeirdGradient(game_offscreen_buffer *Buffer, int BlueOffset,
                                   int GreenOffset) {
-  // TODO: Let's see what the optimizer does
+  // TODO(casey): Let's see what the optimizer does
 
   uint8 *Row = (uint8 *)Buffer->Memory;
   for (int Y = 0; Y < Buffer->Height; ++Y) {
@@ -57,9 +58,9 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender) {
     }
 
     GameState->ToneHz = 512;
-    GameState->tSine = 0;
+    GameState->tSine = 0.0f;
 
-    // TODO: This may be more appropriate to do in the platform layer
+    // TODO(casey): This may be more appropriate to do in the platform layer
     Memory->IsInitialized = true;
   }
 
@@ -67,11 +68,11 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender) {
        ControllerIndex < ArrayCount(Input->Controllers); ++ControllerIndex) {
     game_controller_input *Controller = GetController(Input, ControllerIndex);
     if (Controller->IsAnalog) {
-      // NOTE: Use analog movement tuning
+      // NOTE(casey): Use analog movement tuning
       GameState->BlueOffset += (int)(4.0f * Controller->StickAverageX);
       GameState->ToneHz = 512 + (int)(128.0f * Controller->StickAverageY);
     } else {
-      // NOTE: Use digital movement tuning
+      // NOTE(casey): Use digital movement tuning
       if (Controller->MoveLeft.EndedDown) {
         GameState->BlueOffset -= 1;
       }
@@ -93,15 +94,5 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender) {
 
 extern "C" GAME_GET_SOUND_SAMPLES(GameGetSoundSamples) {
   game_state *GameState = (game_state *)Memory->PermanentStorage;
-  GameOutputSound(SoundBuffer, GameState);
+  GameOutputSound(GameState, SoundBuffer, GameState->ToneHz);
 }
-
-#if 1
-#include <windows.h>
-BOOL WINAPI DllMain(HINSTANCE hinstDLL, // handle to DLL module
-                    DWORD fdwReason,    // reason for calling function
-                    LPVOID lpReserved) {
-
-  return (TRUE);
-}
-#endif
