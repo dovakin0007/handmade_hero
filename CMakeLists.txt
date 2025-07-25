@@ -6,9 +6,9 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # ========== Timestamp for PDB Naming ==========
-string(TIMESTAMP BUILD_DATETIME "%Y%m%d_%H%M%S")
-set(PDB_DLL_NAME "handmade_dll_${BUILD_DATETIME}")
-set(PDB_EXE_NAME "handmade_exe_${BUILD_DATETIME}")
+string(RANDOM LENGTH 4 ALPHABET 0123456789 RANDOM_NUMBER)
+set(PDB_DLL_NAME "handmade_dll_${RANDOM_NUMBER}")
+set(PDB_EXE_NAME "handmade_exe_${RANDOM_NUMBER}")
 set(MAP_FILE_NAME "${CMAKE_SOURCE_DIR}/output/$<CONFIG>/bin/handmade.map")
 
 # ========== Output Directories ==========
